@@ -44,10 +44,10 @@ class PolydataReaderWriter(object):
         self.polydata = polydata
         self.reader = None
         self.writer = None
-
         self.InitReader()
         if polydata:
             self.InitWriter()
+        self.SetFilepath(filepath)
 
     def InitReader(self):
         if '.stl' in self.filepath:

@@ -7,18 +7,24 @@
 # Description:
 
 from IOTools.IOTools import *
+from Processors.Processors import *
+
 
 class build_model(object):
     def __init__(self):
-        self.data_path = {}
         self.processors = []
+        self.cost_functions = []
 
     def set_processors(self, processors):
         self.processors = processors
 
+    def set_cost_functions(self, cost_functions):
+        self.cost_functions = cost_functions
+
     def load_data(self, input_features):
-        for key in self.data_path.keys():
-            filepath = self.data_path.get(key)
+        list_path = list(input_features.keys())
+        for key in list_path:
+            filepath = input_features.get(key)
             temp_loader = PolydataReaderWriter(filepath=filepath)
             input_features[key.replace('_path', '')] = temp_loader.ImportPolydata()
 
@@ -34,15 +40,18 @@ class build_model(object):
             input_features = processor.post_process(input_features=input_features)
         return input_features
 
+
 def main():
     deformable_model = build_model()
     input_features = {
         'xpoly_path': r'C:\Bastien\sTPSRPM\examples\homer_3000pts.vtk',
         'ypoly_path': r'C:\Bastien\sTPSRPM\examples\homer_3000pts_transformed_remeshed.vtk',
     }
-    deformable_model.set_processors([])
+    deformable_model.set_processors([
+        ACVD_resampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
+    ])
     deformable_model.load_data(input_features)
-
+    xxx = 1
 
 if __name__ == '__main__':
     main()
