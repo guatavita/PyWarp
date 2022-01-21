@@ -21,20 +21,38 @@ else:
 
 f32 = af.Dtype.f32
 
-def ConvertVTKtoAF(polydata, af_array, D = 3):
+
+# TODO eval points and do we return af_array?
+# TODO change input to key and load keys
+# TODO add a costfunction merger to compute 2 cost functions (stpsrpm and DMR) and merge them with a lambda
+# TODO put the TPS outside?
+# TODO mettre en place in pipeline template pour les cost functions comme les processors
+
+def ConvertVTKtoAF(polydata, af_array, D=3):
     N = polydata.GetNumberOfPoints()
     points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
     af_array = af.array(N, D, points);
     af.eval(af_array)
-    # TODO eval points and do we return af_array?
 
-class stps_rpm(object):
 
-    def __init__(self, xpoly, ypoly, lambda1_init=0.01, lambda2_init=1, t_init=0.5, t_final=0.001, anneal_rate=0.93, threshold=0.000001,
-                 scalarvtk=False, xlm=None, ylm=None, passband=1, centroid=False, double_norm=True):
+class CostFunction(object):
+    def parse(self, input_features):
+        return input_features
+
+
+class stps_rpm(CostFunction):
+    def __init__(self, xpoly_key, ypoly_key):
         """
-        :param xpoly: source input as a VTK polydata
-        :param ypoly: target input as a VTK polydata
+        :param xpoly_key: source input as a VTK polydata
+        :param ypoly_key: target input as a VTK polydata
+        """
+        self.xpoly_key = xpoly_key
+        self.ypoly_key = ypoly_key
+
+    def parse(self, input_features, lambda1_init=0.01, lambda2_init=1, t_init=0.5,
+              t_final=0.001, anneal_rate=0.93, threshold=0.000001, scalarvtk=False, xlm=None, ylm=None,
+              passband=1, centroid=False, double_norm=True):
+        """
         :param lambda1: lambda1 init value, weight for the 'non-linear' part of the TPS
         :param lambda2: lambda2 init value, Weight for the affine part of the TPS
         :param t_init: initial temperature value
@@ -49,33 +67,37 @@ class stps_rpm(object):
         :param double_norm: normalization of the matrix m (False/True = single/double; default: True)
         """
         self.D = 3
-        self.xpoly = xpoly
-        self.ypoly = ypoly
-        self.xpoints = xpoly.GetNumberOfPoints()
-        self.ypoints = ypoly.GetNumberOfPoints()
-        perT_maxit = 2
-        ita = 0
-        lambda1 = lambda1_init
-        lambda2 = lambda2_init;
-        T = t_init;
-        nbiter = round(math.log(t_final / t_init) / math.log(anneal_rate));
-        lm_size = xlm.GetNumberOfPoints();
+        self.xpoly = input_features[self.xpoly_key]
+        self.ypoly = input_features[self.ypoly_key]
+        self.xpoints = self.xpoly.GetNumberOfPoints()
+        self.ypoints = self.ypoly.GetNumberOfPoints()
+        self.threshold = threshold
+        self.scalarvtk = scalarvtk
+        self.passband = passband
+        self.centroid = centroid
+        self.double_norm = double_norm
+        self.perT_maxit = 2
+        self.ita = 0
+        self.lambda1 = lambda1_init
+        self.lambda2 = lambda2_init
+        self.T = t_init
+        self.nbiter = round(math.log(t_final / t_init) / math.log(anneal_rate))
+        self.lm_size = xlm.GetNumberOfPoints()
         if xlm.GetNumberOfPoints() != ylm.GetNumberOfPoints():
             raise ValueError("Provided landmarks does not have the same size")
-        ft_output = None
-        bt_output = None
-        ft_vectorfield = None
-        bt_vectorfield = None
+        self.ft_output = None
+        self.bt_output = None
+        self.ft_vectorfield = None
+        self.bt_vectorfield = None
         self.allocate_data()
 
     def allocate_data(self):
-
         xpoly = af.constant(0, self.xpoints, self.D, dtype=f32)
         ypoly = af.constant(0, self.ypoints, self.D, dtype=f32)
 
         ConvertVTKtoAF(self.xpoly, xpoly)
         ConvertVTKtoAF(self.ypoly, ypoly)
-        #
+
         # vtkSmartPointer < vtkDoubleArray > xscalar_vtk = vtkSmartPointer < vtkDoubleArray >::New();
         # vtkSmartPointer < vtkDoubleArray > yscalar_vtk = vtkSmartPointer < vtkDoubleArray >::New();
         # af::array
@@ -152,5 +174,4 @@ class stps_rpm(object):
         # yscale = constant(1, 1, f32);
 
     def update(self):
-        xxx =1
-
+        xxx = 1

@@ -8,18 +8,18 @@
 
 from IOTools.IOTools import *
 from Processors.Processors import *
-
+from CostFunctions.CostFunctions import *
 
 class build_model(object):
     def __init__(self):
         self.processors = []
-        self.cost_functions = []
+        self.cost_function = None
 
     def set_processors(self, processors):
         self.processors = processors
 
-    def set_cost_functions(self, cost_functions):
-        self.cost_functions = cost_functions
+    def set_cost_functions(self, cost_function):
+        self.cost_function = cost_function
 
     def load_data(self, input_features):
         list_path = list(input_features.keys())
@@ -40,8 +40,15 @@ class build_model(object):
             input_features = processor.post_process(input_features=input_features)
         return input_features
 
+    def run_cost_function(self, input_features):
+        print('Performing cost function {}'.format(self.cost_function))
+        input_features = self.cost_function.parse(input_features=input_features)
+        return input_features
+
 
 def main():
+
+    # define model
     deformable_model = build_model()
     input_features = {
         'xpoly_path': r'C:\Bastien\sTPSRPM\examples\homer_3000pts.vtk',
@@ -50,8 +57,17 @@ def main():
     deformable_model.set_processors([
         ACVD_resampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
     ])
+    deformable_model.set_cost_functions([
+        stps_rpm(xpoly_key='xpoly', ypoly_key='ypoly')
+    ])
+
+    # build model
     deformable_model.load_data(input_features)
-    xxx = 1
+    deformable_model.pre_process()
+    deformable_model.run_cost_function()
+    deformable_model.post_process()
+
+
 
 if __name__ == '__main__':
     main()
