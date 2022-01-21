@@ -8,9 +8,14 @@
 
 
 class Processor(object):
-
     def pre_process(self, input_features):
         return input_features
 
     def post_pocess(self, input_features):
         return input_features
+
+class ACVD_resampling(Processor):
+    def __init__(self):
+
+    def pre_process(self, input_features):
+        

@@ -26,8 +26,8 @@ pip install -r requirements.txt
 ```
 
 List of required libraries:
-
 ```
+This need framework relies on ArrayFire 3.6.2 (cpu or CUDA backend) https://arrayfire.com/
 ```
 
 
