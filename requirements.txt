@@ -1,0 +1,13 @@
+tqdm
+numpy
+SimpleITK
+pydicom>=2.2.1
+opencv-python
+matplotlib
+ipywidgets
+pathvalidate
+python-gdcm
+PlotScrollNumpyArrays
+vtk
+pyvista
+pyacvd
