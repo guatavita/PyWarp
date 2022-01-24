@@ -56,7 +56,9 @@ def main():
         'ymask_path': r'C:\Data\Data_test\Vessie_ext.nii.gz',
     }
     deformable_model.set_processors([
-
+        Convert_Mask_To_Poly(input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')),
+        Get_SITK_Info(input_keys=('xmask', 'ymask')),
+        SITK_To_Numpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVD_resampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
     ])
     deformable_model.set_cost_functions([

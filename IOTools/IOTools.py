@@ -34,16 +34,12 @@ class ImageReaderWriter(DataReaderWriter):
 
     def Import(self):
         img_pointer = sitk.ReadImage(self.filepath)
-        spacing = np.array(list(img_pointer.GetSpacing()))
-        origin = np.array(list(img_pointer.GetOrigin()))
-
         if self.cast_float32:
             cast_filter = sitk.CastImageFilter()
             cast_filter.SetNumberOfThreads(0)
             cast_filter.SetOutputPixelType(sitk.sitkFloat32)
             img_pointer = cast_filter.Execute(img_pointer)
-
-        return img_pointer, spacing, origin
+        return img_pointer
 
     def Export(self):
         sitk.WriteImage(self.image, self.filepath)
