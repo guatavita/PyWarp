@@ -67,9 +67,9 @@ def main():
 
     # build model
     deformable_model.load_data(input_features)
-    deformable_model.pre_process()
-    deformable_model.run_cost_function()
-    deformable_model.post_process()
+    deformable_model.pre_process(input_features)
+    deformable_model.run_cost_function(input_features)
+    deformable_model.post_process(input_features)
 
 
 # TODO finite element model using unstructured structure
