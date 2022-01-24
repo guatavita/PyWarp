@@ -51,10 +51,10 @@ class PolydataReaderWriter(DataReaderWriter):
         self.polydata = polydata
         self.reader = None
         self.writer = None
-        self.InitReader()
+        self.init_reader()
         if polydata:
-            self.InitWriter()
-        self.SetFilepath(filepath)
+            self.init_writer()
+        self.set_filepath(filepath)
 
     def init_reader(self):
         if '.stl' in self.filepath:
@@ -77,6 +77,7 @@ class PolydataReaderWriter(DataReaderWriter):
 
     def set_filepath(self, filepath):
         self.reader.SetFileName(filepath)
+        self.writer.SetFileName(filepath)
 
     def import_data(self):
         self.reader.Update()
