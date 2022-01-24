@@ -10,8 +10,10 @@ from IOTools.IOTools import *
 from Processors.Processors import *
 from CostFunctions.CostFunctions import *
 
+
 class build_model(object):
-    def __init__(self):
+    def __init__(self, dataloader=DataReaderWriter):
+        self.dataloader = dataloader
         self.processors = []
         self.cost_function = None
 
@@ -25,8 +27,8 @@ class build_model(object):
         list_path = list(input_features.keys())
         for key in list_path:
             filepath = input_features.get(key)
-            temp_loader = PolydataReaderWriter(filepath=filepath)
-            input_features[key.replace('_path', '')] = temp_loader.ImportPolydata()
+            temp_loader = self.dataloader(filepath=filepath)
+            input_features[key.replace('_path', '')] = temp_loader.Import()
 
     def pre_process(self, input_features):
         for processor in self.processors:
@@ -47,14 +49,14 @@ class build_model(object):
 
 
 def main():
-
     # define model
-    deformable_model = build_model()
+    deformable_model = build_model(dataloader=ImageReaderWriter)
     input_features = {
-        'xpoly_path': r'C:\Bastien\sTPSRPM\examples\homer_3000pts.vtk',
-        'ypoly_path': r'C:\Bastien\sTPSRPM\examples\homer_3000pts_transformed_remeshed.vtk',
+        'xmask_path': r'C:\Data\Data_test\Prostate.nii.gz',
+        'ymask_path': r'C:\Data\Data_test\Vessie_ext.nii.gz',
     }
     deformable_model.set_processors([
+
         ACVD_resampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
     ])
     deformable_model.set_cost_functions([
@@ -68,6 +70,10 @@ def main():
     deformable_model.post_process()
 
 
-
+# TODO finite element model using unstructured structure
+# TODO label of class per structure
+# TODO plot vtk function module (random color and transparency)
+# TODO rigid alignment process (for example centroid init and Z-norm of the whole structure)
+# TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
     main()

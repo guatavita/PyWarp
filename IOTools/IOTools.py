@@ -15,13 +15,24 @@ import pyacvd
 import math
 
 
-class ImageReaderWriter(object):
-    def __init__(self, filepath, image=None, cast_float32=False):
+class DataReaderWriter(object):
+    def __init__(self, filepath):
         self.filepath = filepath
+
+    def Import(self):
+        return
+
+    def Export(self):
+        return
+
+
+class ImageReaderWriter(DataReaderWriter):
+    def __init__(self, filepath, image=None, cast_float32=False):
+        super().__init__(filepath)
         self.image = image
         self.cast_float32 = cast_float32
 
-    def ImportImage(self):
+    def Import(self):
         img_pointer = sitk.ReadImage(self.filepath)
         spacing = np.array(list(img_pointer.GetSpacing()))
         origin = np.array(list(img_pointer.GetOrigin()))
@@ -34,13 +45,13 @@ class ImageReaderWriter(object):
 
         return img_pointer, spacing, origin
 
-    def ExportImage(self):
+    def Export(self):
         sitk.WriteImage(self.image, self.filepath)
 
 
-class PolydataReaderWriter(object):
+class PolydataReaderWriter(DataReaderWriter):
     def __init__(self, filepath, polydata=None):
-        self.filepath = filepath
+        super().__init__(filepath)
         self.polydata = polydata
         self.reader = None
         self.writer = None
@@ -71,11 +82,11 @@ class PolydataReaderWriter(object):
     def SetFilepath(self, filepath):
         self.reader.SetFileName(filepath)
 
-    def ImportPolydata(self):
+    def Import(self):
         self.reader.Update()
         return self.reader.GetOutput()
 
-    def ExportPolydata(self):
+    def Export(self):
         self.writer.Write()
 
 
