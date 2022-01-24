@@ -33,7 +33,7 @@ class Processor(object):
         return input_features
 
 
-class ACVD_resampling(Processor):
+class ACVDResampling(Processor):
     def __init__(self, input_keys=('input_name',), output_keys=('output_name',), np_points=(5000,)):
         self.input_keys = input_keys
         self.output_keys = output_keys
@@ -56,7 +56,8 @@ class ACVD_resampling(Processor):
             input_features[output_key] = self.compute_acvd(input_features[input_key], np_point)
         return input_features
 
-class Convert_Mask_To_Poly(Processor):
+
+class ConvertMaskToPoly(Processor):
     def __init__(self, input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')):
         self.input_keys = input_keys
         self.output_keys = output_keys
@@ -67,10 +68,11 @@ class Convert_Mask_To_Poly(Processor):
         for input_key, output_key in zip(self.input_keys, self.output_keys):
             image = input_features[input_key]
             converter = DataConverter(image=image, inval=1, outval=0, cast_float32=True)
-            input_features[output_key] = converter.MaskToPolydata()
+            input_features[output_key] = converter.mask_to_polydata()
         return input_features
 
-class Get_SITK_Info(Processor):
+
+class GetSITKInfo(Processor):
     def __init__(self, input_keys=('xmask', 'ymask')):
         self.input_keys = input_keys
 
@@ -82,7 +84,8 @@ class Get_SITK_Info(Processor):
             input_features[input_key + '_origin'] = np.array(list(img_pointer.GetOrigin()))
         return input_features
 
-class SITK_To_Numpy(Processor):
+
+class SITKToNumpy(Processor):
     def __init__(self, input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')):
         self.input_keys = input_keys
         self.output_keys = output_keys

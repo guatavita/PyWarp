@@ -10,8 +10,10 @@ from IOTools.IOTools import *
 from Processors.Processors import *
 from CostFunctions.CostFunctions import *
 
+from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 
-class build_model(object):
+
+class BuildModel(object):
     def __init__(self, dataloader=DataReaderWriter):
         self.dataloader = dataloader
         self.processors = []
@@ -28,7 +30,7 @@ class build_model(object):
         for key in list_path:
             filepath = input_features.get(key)
             temp_loader = self.dataloader(filepath=filepath)
-            input_features[key.replace('_path', '')] = temp_loader.Import()
+            input_features[key.replace('_path', '')] = temp_loader.import_data()
 
     def pre_process(self, input_features):
         for processor in self.processors:
@@ -50,19 +52,19 @@ class build_model(object):
 
 def main():
     # define model
-    deformable_model = build_model(dataloader=ImageReaderWriter)
+    deformable_model = BuildModel(dataloader=ImageReaderWriter)
     input_features = {
         'xmask_path': r'C:\Data\Data_test\Prostate.nii.gz',
         'ymask_path': r'C:\Data\Data_test\Vessie_ext.nii.gz',
     }
     deformable_model.set_processors([
-        Convert_Mask_To_Poly(input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')),
-        Get_SITK_Info(input_keys=('xmask', 'ymask')),
-        SITK_To_Numpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
-        ACVD_resampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
+        ConvertMaskToPoly(input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')),
+        GetSITKInfo(input_keys=('xmask', 'ymask')),
+        SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
+        ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
     ])
     deformable_model.set_cost_functions([
-        stps_rpm(xpoly_key='xpoly', ypoly_key='ypoly')
+        STPRPM(xpoly_key='xpoly', ypoly_key='ypoly')
     ])
 
     # build model

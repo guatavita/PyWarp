@@ -19,10 +19,10 @@ class DataReaderWriter(object):
     def __init__(self, filepath):
         self.filepath = filepath
 
-    def Import(self):
+    def import_data(self):
         return
 
-    def Export(self):
+    def export_data(self):
         return
 
 
@@ -32,7 +32,7 @@ class ImageReaderWriter(DataReaderWriter):
         self.image = image
         self.cast_float32 = cast_float32
 
-    def Import(self):
+    def import_data(self):
         img_pointer = sitk.ReadImage(self.filepath)
         if self.cast_float32:
             cast_filter = sitk.CastImageFilter()
@@ -41,7 +41,7 @@ class ImageReaderWriter(DataReaderWriter):
             img_pointer = cast_filter.Execute(img_pointer)
         return img_pointer
 
-    def Export(self):
+    def export_data(self):
         sitk.WriteImage(self.image, self.filepath)
 
 
@@ -56,7 +56,7 @@ class PolydataReaderWriter(DataReaderWriter):
             self.InitWriter()
         self.SetFilepath(filepath)
 
-    def InitReader(self):
+    def init_reader(self):
         if '.stl' in self.filepath:
             self.reader = vtk.vtkSTLReader()
         elif '.vtk' in self.filepath:
@@ -66,7 +66,7 @@ class PolydataReaderWriter(DataReaderWriter):
         else:
             raise ValueError('File extension not supported')
 
-    def InitWriter(self):
+    def init_writer(self):
         if '.stl' in self.filepath:
             self.writer = vtk.vtkSTLWriter()
         elif '.vtk' in self.filepath:
@@ -75,14 +75,14 @@ class PolydataReaderWriter(DataReaderWriter):
             raise ValueError('File extension not supported')
         self.writer.SetInputData(self.polydata)
 
-    def SetFilepath(self, filepath):
+    def set_filepath(self, filepath):
         self.reader.SetFileName(filepath)
 
-    def Import(self):
+    def import_data(self):
         self.reader.Update()
         return self.reader.GetOutput()
 
-    def Export(self):
+    def export_data(self):
         self.writer.Write()
 
 
@@ -101,7 +101,7 @@ class DataConverter(object):
         self.outval = outval
         self.cast_float32 = cast_float32
 
-    def MaskToPolydata(self):
+    def mask_to_polydata(self):
         label = numpy_support.numpy_to_vtk(num_array=self.numpy_array.ravel(), deep=True, array_type=vtk.VTK_FLOAT)
         # Convert the VTK array to vtkImageData
         img_vtk = vtk.vtkImageData()
@@ -129,7 +129,7 @@ class DataConverter(object):
         else:
             return MarchingCubeFilter.GetOutput()
 
-    def PolydataToMask(self):
+    def polydata_to_mask(self):
         if not self.polydata:
             raise ValueError("Specify polydata")
 

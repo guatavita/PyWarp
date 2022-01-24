@@ -40,7 +40,7 @@ class CostFunction(object):
         return input_features
 
 
-class stps_rpm(CostFunction):
+class STPRPM(CostFunction):
     def __init__(self, xpoly_key, ypoly_key):
         """
         :param xpoly_key: source input as a VTK polydata
