@@ -62,6 +62,7 @@ def main():
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
+        AlignCentroid(fixed_keys=('xpoly',), moving_keys=('ypoly',), output_keys=('trans_ypoly',), run_post_process=True),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
     ])
     deformable_model.set_cost_functions([

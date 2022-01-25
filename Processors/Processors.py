@@ -28,6 +28,25 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+def get_polydata_centroid(polydata):
+    center_filter = vtk.vtkCenterOfMass()
+    center_filter.SetInputData(polydata)
+    center_filter.SetUseScalarsAsWeights(False)
+    center_filter.Update()
+    centroid = center_filter.GetCenter()
+    return centroid
+
+
+def translate_polydata(polydata, translation=(0., 0., 0.)):
+    transform = vtk.vtkTransform()
+    transform.Translate(translation[0], translation[1], translation[2])
+    transform_filter = vtk.vtkTransformPolyDataFilter()
+    transform_filter.SetTransform(transform)
+    transform_filter.SetInputData(polydata)
+    transform_filter.Update()
+    return transform_filter.GetOutput()
+
+
 class Processor(object):
     def pre_process(self, input_features):
         return input_features
@@ -109,14 +128,6 @@ class ZNormPoly(Processor):
         self.centroid_keys = centroid_keys
         self.scale_keys = scale_keys
 
-    def get_centroid(self, polydata):
-        center_filter = vtk.vtkCenterOfMass()
-        center_filter.SetInputData(polydata)
-        center_filter.SetUseScalarsAsWeights(False)
-        center_filter.Update()
-        center = center_filter.GetCenter()
-        return center
-
     def get_scale(self, polydata, centroid):
         '''
         :param polydata: vtk polydata
@@ -152,7 +163,7 @@ class ZNormPoly(Processor):
         for input_key, output_key, centroid_key, scale_key in zip(self.input_keys, self.output_keys, self.centroid_keys,
                                                                   self.scale_keys):
             polydata = input_features[input_key]
-            centroid = self.get_centroid(polydata)
+            centroid = get_polydata_centroid(polydata)
             scale = self.get_scale(polydata, centroid)
             input_features[output_key] = self.apply_z_norm(polydata, centroid, scale)
             input_features[output_key + '_' + centroid_key] = centroid
@@ -167,3 +178,30 @@ class ZNormPoly(Processor):
             centroid = input_features[input_key + '_' + centroid_key]
             scale = input_features[input_key + '_' + scale_key]
             input_features[output_key] = self.unapply_z_norm(polydata, centroid, scale)
+        return input_features
+
+
+class AlignCentroid(Processor):
+    def __init__(self, fixed_keys=('xpoly',), moving_keys=('ypoly',), output_keys=('aligned_ypoly',),
+                 run_post_process=False):
+        self.fixed_keys = fixed_keys
+        self.moving_keys = moving_keys
+        self.output_keys = output_keys
+        self.run_post_process = run_post_process
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.fixed_keys + self.moving_keys)
+        for fixed_key, moving_key, output_key in zip(self.fixed_keys, self.moving_keys, self.output_keys):
+            fcentroid = get_polydata_centroid(input_features[fixed_key])
+            mcentroid = get_polydata_centroid(input_features[moving_key])
+            translation = tuple(np.subtract(fcentroid, mcentroid))
+            input_features[output_key] = translate_polydata(input_features[moving_key], translation=translation)
+            input_features[output_key + '_translation'] = translation
+        return input_features
+
+    def post_process(self, input_features):
+        if self.run_post_process:
+            for output_key in self.output_keys:
+                translation = tuple([-trans for trans in input_features[output_key + '_translation']])
+                input_features[output_key] = translate_polydata(input_features[output_key], translation=translation)
+        return input_features
