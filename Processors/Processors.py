@@ -6,13 +6,16 @@
 # bastien.rigaud@univ-rennes1.fr
 # Description:
 
+import math
 import numpy as np
 import SimpleITK as sitk
 import vtk
+from vtk.util import numpy_support
 import pyvista as pv
 import pyacvd
 
 from IOTools.IOTools import DataConverter
+from PlotVTK.PlotVTK import plot_vtk
 
 
 def _check_keys_(input_features, keys):
@@ -29,7 +32,7 @@ class Processor(object):
     def pre_process(self, input_features):
         return input_features
 
-    def post_pocess(self, input_features):
+    def post_process(self, input_features):
         return input_features
 
 
@@ -96,3 +99,71 @@ class SITKToNumpy(Processor):
             img_pointer = input_features[input_key]
             input_features[output_key] = sitk.GetArrayFromImage(img_pointer)
         return input_features
+
+
+class ZNormPoly(Processor):
+    def __init__(self, input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
+                 centroid_keys=('centroid', 'centroid',), scale_keys=('scale', 'scale')):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+        self.centroid_keys = centroid_keys
+        self.scale_keys = scale_keys
+
+    def get_centroid(self, polydata):
+        center_filter = vtk.vtkCenterOfMass()
+        center_filter.SetInputData(polydata)
+        center_filter.SetUseScalarsAsWeights(False)
+        center_filter.Update()
+        center = center_filter.GetCenter()
+        return center
+
+    def get_scale(self, polydata, centroid):
+        '''
+        :param polydata: vtk polydata
+        :param centroid: polydata centroid as tuple
+        :return: return squared root of the summed euclidean distance between points and centroid divided by number of points
+        '''
+        points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
+        scale = math.sqrt(np.sum(np.sum(np.square(points - centroid), axis=-1)) / points.shape[0])
+        return scale
+
+    def apply_z_norm(self, polydata, centroid, scale):
+        point_data = polydata.GetPoints().GetData()
+        np_points = numpy_support.vtk_to_numpy(point_data)
+        scaled_np_points = (np_points - centroid) / scale
+        scaled_point_data = numpy_support.numpy_to_vtk(scaled_np_points)
+        output = vtk.vtkPolyData()
+        output.DeepCopy(polydata)
+        output.GetPoints().SetData(scaled_point_data)
+        return output
+
+    def unapply_z_norm(self, polydata, centroid, scale):
+        point_data = polydata.GetPoints().GetData()
+        np_points = numpy_support.vtk_to_numpy(point_data)
+        unscaled_np_points = (np_points * scale) + centroid
+        unscaled_point_data = numpy_support.numpy_to_vtk(unscaled_np_points)
+        output = vtk.vtkPolyData()
+        output.DeepCopy(polydata)
+        output.GetPoints().SetData(unscaled_point_data)
+        return output
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key, centroid_key, scale_key in zip(self.input_keys, self.output_keys, self.centroid_keys,
+                                                                  self.scale_keys):
+            polydata = input_features[input_key]
+            centroid = self.get_centroid(polydata)
+            scale = self.get_scale(polydata, centroid)
+            input_features[output_key] = self.apply_z_norm(polydata, centroid, scale)
+            input_features[output_key + '_' + centroid_key] = centroid
+            input_features[output_key + '_' + scale_key] = scale
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key, centroid_key, scale_key in zip(self.input_keys, self.output_keys, self.centroid_keys,
+                                                                  self.scale_keys):
+            polydata = input_features[input_key]
+            centroid = input_features[input_key + '_' + centroid_key]
+            scale = input_features[input_key + '_' + scale_key]
+            input_features[output_key] = self.unapply_z_norm(polydata, centroid, scale)

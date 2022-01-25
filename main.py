@@ -11,7 +11,7 @@ from Processors.Processors import *
 from CostFunctions.CostFunctions import *
 
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
-
+from PlotVTK.PlotVTK import plot_vtk
 
 class BuildModel(object):
     def __init__(self, dataloader=DataReaderWriter):
@@ -61,16 +61,17 @@ def main():
         ConvertMaskToPoly(input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')),
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
-        ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000))
+        ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
+        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
     ])
     deformable_model.set_cost_functions([
-        STPRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+        # STPRPM(xpoly_key='xpoly', ypoly_key='ypoly')
     ])
 
     # build model
     deformable_model.load_data(input_features)
     deformable_model.pre_process(input_features)
-    deformable_model.run_cost_function(input_features)
+    # deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
 
 
