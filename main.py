@@ -62,24 +62,21 @@ def main():
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
-        AlignCentroid(fixed_keys=('xpoly',), moving_keys=('ypoly',), output_keys=('trans_ypoly',), run_post_process=True),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
     ])
-    deformable_model.set_cost_functions([
-        # STPRPM(xpoly_key='xpoly', ypoly_key='ypoly')
-    ])
+    deformable_model.set_cost_functions(
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+    )
 
     # build model
     deformable_model.load_data(input_features)
     deformable_model.pre_process(input_features)
-    # deformable_model.run_cost_function(input_features)
+    deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
 
 
 # TODO finite element model using unstructured structure
 # TODO label of class per structure
-# TODO plot vtk function module (random color and transparency)
-# TODO rigid alignment process (for example centroid init and Z-norm of the whole structure)
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
     main()
