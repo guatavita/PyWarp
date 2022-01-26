@@ -15,7 +15,7 @@ bastien.rigaud@univ-rennes1.fr
 
 ## Example 
 
-```
+```python:main.py
 ```
 
 ## Dependencies

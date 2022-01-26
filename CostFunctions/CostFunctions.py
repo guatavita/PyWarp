@@ -12,6 +12,8 @@ from vtk.util import numpy_support
 import arrayfire as af
 import math
 
+from PlotVTK.PlotVTK import plot_vtk
+
 backends = af.get_available_backends()
 if 'cuda' in backends:
     af.set_backend('cuda')
@@ -35,26 +37,27 @@ def _check_keys_(input_features, keys):
 
 # TODO ADD documentation for each function
 # TODO eval points and do we return af_array?
-# TODO change input to key and load keys
 # TODO add a costfunction merger to compute 2 cost functions (stpsrpm and DMR) and merge them with a lambda
 # TODO put the TPS outside?
-# TODO mettre en place in pipeline template pour les cost functions comme les processors
-
-def ConvertVTKtoAF(polydata, force_float32=True):
+# TODO add target mean dist (stop when inf to 1 mm)
+def convert_vtk_to_af(polydata, force_float32=True, transpose=True):
     points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
     if force_float32:
         points = points.astype(dtype=np.float32)
-    af_array = af.Array(points.ctypes.data, points.shape, points.dtype.char)
-    return af_array
+    af_array = af.Array(points.ctypes.data, points.shape[::-1], points.dtype.char)
+    return af_array if not transpose else af.transpose(af_array)
+
+
+def convert_af_to_vtk(template, array):
+    new_points = numpy_support.numpy_to_vtk(array.to_ndarray())
+    polydata = vtk.vtkPolyData()
+    polydata.DeepCopy(template)
+    polydata.GetPoints().SetData(new_points)
+    return polydata
 
 
 def compute_centroid_af(array):
     return af.sum(array, 0) / array.dims()[0]
-
-
-class CostFunction(object):
-    def parse(self, input_features):
-        return input_features
 
 
 def compute_kernel(array):
@@ -78,6 +81,11 @@ def compute_kernel_2(array1, array2):
         temp2 = af.tile(af.transpose(array2[:, i]), M, 1)
         kernel = kernel + af.pow(temp1 - temp2, 2)
     return kernel
+
+
+class CostFunction(object):
+    def parse(self, input_features):
+        return input_features
 
 
 class STPSRPM(CostFunction):
@@ -128,17 +136,17 @@ class STPSRPM(CostFunction):
 
     def parse(self, input_features):
         _check_keys_(input_features, (self.xpoly_key, self.ypoly_key))
-        self.xpoly = input_features[self.xpoly_key]
-        self.ypoly = input_features[self.ypoly_key]
-        self.xpoints = self.xpoly.GetNumberOfPoints()
-        self.ypoints = self.ypoly.GetNumberOfPoints()
+        self.xpoly_vtk = input_features[self.xpoly_key]
+        self.ypoly_vtk = input_features[self.ypoly_key]
+        self.xpoints = self.xpoly_vtk.GetNumberOfPoints()
+        self.ypoints = self.ypoly_vtk.GetNumberOfPoints()
 
-        self.xlm = input_features.get(self.xlm_key)
-        self.ylm = input_features.get(self.ylm_key)
-
-        if self.xlm and self.ylm:
-            self.lm_size = self.xlm.GetNumberOfPoints()
-            if self.xlm.GetNumberOfPoints() != self.ylm.GetNumberOfPoints():
+        self.xlm_vtk = input_features.get(self.xlm_key)
+        self.ylm_vtk = input_features.get(self.ylm_key)
+        self.lm_size = 0
+        if self.xlm_vtk and self.ylm:
+            self.lm_size = self.xlm_vtk.GetNumberOfPoints()
+            if self.xlm_vtk.GetNumberOfPoints() != self.ylm_vtk.GetNumberOfPoints():
                 raise ValueError("Provided landmarks does not have the same size")
 
         self.ft_output = None
@@ -149,8 +157,8 @@ class STPSRPM(CostFunction):
         self.update()
 
     def allocate_data(self):
-        self.xpoly = ConvertVTKtoAF(self.xpoly, force_float32=True)
-        self.ypoly = ConvertVTKtoAF(self.ypoly, force_float32=True)
+        self.xpoly = convert_vtk_to_af(self.xpoly_vtk, force_float32=True)
+        self.ypoly = convert_vtk_to_af(self.ypoly_vtk, force_float32=True)
 
         if self.scalarvtk:
             xxx = 1
@@ -161,9 +169,9 @@ class STPSRPM(CostFunction):
             # ConvertScalarstoAF(xscalar_vtk, xscalar);
             # ConvertScalarstoAF(yscalar_vtk, yscalar);
 
-        if self.xlm and self.ylm:
-            self.xlm = ConvertVTKtoAF(self.xlm, force_float32=True)
-            self.ylm = ConvertVTKtoAF(self.ylm, force_float32=True)
+        if self.xlm_vtk and self.ylm_vtk:
+            self.xlm = convert_vtk_to_af(self.xlm_vtk, force_float32=True)
+            self.ylm = convert_vtk_to_af(self.ylm_vtk, force_float32=True)
 
             # join landmark with xpoly between[0:lm_size]
             self.xpoly = af.join(0, self.xlm, self.xpoly)
@@ -207,7 +215,6 @@ class STPSRPM(CostFunction):
             af.pow(self.xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1)) / (4 * self.T_init))
         return m_matrix, m_outliers_row, m_outliers_col
 
-
     def normalize_it_m(self, m_matrix, m_outliers_row, m_outliers_col):
         norm_threshold = 0.05
         norm_maxit = 10
@@ -225,7 +232,9 @@ class STPSRPM(CostFunction):
             sumy = af.sum(m_matrix, 0) + af.transpose(m_outliers_row)
             m_matrix = m_matrix / af.tile(sumy, xpoly_dim, 1)
             m_outliers_row = m_outliers_row / af.transpose(sumy)
-            err = (af.matmul(sumx - 1, sumx - 1, af.MATPROP.TRANS) + af.matmul(sumy - 1, sumy - 1, af.MATPROP.NONE, af.MATPROP.TRANS)) / (xpoly_dim + ypoly_dim)
+            err = (af.matmul(sumx - 1, sumx - 1, af.MATPROP.TRANS) + af.matmul(sumy - 1, sumy - 1, af.MATPROP.NONE,
+                                                                               af.MATPROP.TRANS)) / (
+                              xpoly_dim + ypoly_dim)
 
             if err[0, 0].scalar() < norm_threshold or norm_it >= norm_maxit:
                 return m_matrix, m_outliers_row, m_outliers_col
@@ -291,18 +300,23 @@ class STPSRPM(CostFunction):
         q, r, tau = af.qr(S)
 
         # Still need to extract Q1, Q2 and R
-        q1 = q[:,0:D+1] # size is [N][D+1]
-        q2 = q[:,D + 1:N] # size is [N][N - D - 1]
-        R = r[0:D+1,:] # size is [D + 1, D + 1]
+        q1 = q[:, 0:D + 1]  # size is [N][D+1]
+        q2 = q[:, D + 1:N]  # size is [N][N - D - 1]
+        R = r[0:D + 1, :]  # size is [D + 1, D + 1]
 
         # create some matrices to compute c and d
-        gamma = af.matmul(af.inverse(af.matmul(af.matmul(q2, K, af.MATPROP.TRANS), q2) + lambda1 * af.identity(N - D - 1, N - D - 1, dtype=f32)), af.matmul(q2, T, af.MATPROP.TRANS))
+        gamma = af.matmul(af.inverse(
+            af.matmul(af.matmul(q2, K, af.MATPROP.TRANS), q2) + lambda1 * af.identity(N - D - 1, N - D - 1, dtype=f32)),
+                          af.matmul(q2, T, af.MATPROP.TRANS))
         c = af.matmul(q2, gamma)
 
         # d = inv(R) * q1' * (y-K*q2*gamma);
         # d = matmul(inverse(R), matmul(q1, (T - matmul(K, c)), AF_MAT_TRANS));
         # with regularization using lambda2
-        d = af.matmul(af.inverse(af.matmul(R, R, af.MATPROP.TRANS) + lambda2 * af.identity(D + 1, D + 1, dtype=f32)), af.matmul(af.transpose(R), af.matmul(af.transpose(q1), (T - af.matmul(K, c)))) - af.matmul(R, R, af.MATPROP.TRANS)) + af.identity(D + 1, D + 1, dtype=f32)
+        d = af.matmul(af.inverse(af.matmul(R, R, af.MATPROP.TRANS) + lambda2 * af.identity(D + 1, D + 1, dtype=f32)),
+                      af.matmul(af.transpose(R), af.matmul(af.transpose(q1), (T - af.matmul(K, c)))) - af.matmul(R, R,
+                                                                                                                 af.MATPROP.TRANS)) + af.identity(
+            D + 1, D + 1, dtype=f32)
         return K, d, c
 
     def warp_QR(self, poly, K, d, c):
@@ -319,8 +333,7 @@ class STPSRPM(CostFunction):
         #  create source point array for AF with extra "1" column
         S = af.join(1, ones, poly)
         output = af.matmul(S, d) + af.matmul(K, c)
-        #TODO virtual_poly = output.cols(1, af::end)
-        virtual_poly = output[:,1:]
+        virtual_poly = output[:, 1:]
         return virtual_poly
 
     def update(self):
@@ -329,7 +342,6 @@ class STPSRPM(CostFunction):
             ypoly_res = self.ypoly.copy()
 
             if self.passband[res] != 1:
-                xxx = 1
                 xxx = 1
                 # ConvertAFtoVTK(xpoly_smooth_vtk, xpoly(seq(lm_size, xpoints - 1), span));
                 # ConvertAFtoVTK(ypoly_smooth_vtk, ypoly(seq(lm_size, ypoints - 1), span));
@@ -375,7 +387,8 @@ class STPSRPM(CostFunction):
                         return
 
                     if self.iterative_norm:
-                        m_matrix, m_outliers_row, m_outliers_col = self.normalize_it_m(m_matrix, m_outliers_row, m_outliers_col)
+                        m_matrix, m_outliers_row, m_outliers_col = self.normalize_it_m(m_matrix, m_outliers_row,
+                                                                                       m_outliers_col)
                     else:
                         m_matrix = self.normalize_m(m_matrix)
 
@@ -391,3 +404,7 @@ class STPSRPM(CostFunction):
                     virtual_xpoly = self.warp_QR(xpoly_res, self.K_ft, self.d_ft, self.c_ft)
                     virtual_ypoly = self.warp_QR(ypoly_res, self.K_bt, self.d_bt, self.c_bt)
                 self.T *= self.anneal_rate
+
+                virtual_xpoly_vtk = convert_af_to_vtk(self.xpoly_vtk, virtual_xpoly[self.lm_size:self.xpoints, :])
+                virtual_ypoly_vtk = convert_af_to_vtk(self.ypoly_vtk, virtual_ypoly[self.lm_size:self.ypoints, :])
+        xxx = 1
