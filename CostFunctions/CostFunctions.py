@@ -90,9 +90,8 @@ class CostFunction(object):
 
 class STPSRPM(CostFunction):
     def __init__(self, xpoly_key='xpoly', ypoly_key='xpoly', ft_out_key='ft_poly', bt_out_key='bt_poly',
-                 ft_dvf_key='ft_dvf', bt_dvf_key='bt_dvf', lambda1_init=0.01, lambda2_init=1, T_init=0.5,
-                 T_final=0.001, anneal_rate=0.93, threshold=0.000001, scalarvtk=False, xlm_key=None, ylm_key=None,
-                 passband=[1], centroid=False, iterative_norm=True):
+                 lambda1_init=0.01, lambda2_init=1, T_init=0.5, T_final=0.001, anneal_rate=0.93, threshold=0.000001,
+                 scalarvtk=False, xlm_key=None, ylm_key=None, passband=[1], centroid=False, iterative_norm=True):
         """
         :param xpoly_key: source input as a VTK polydata
         :param ypoly_key: target input as a VTK polydata
@@ -113,10 +112,6 @@ class STPSRPM(CostFunction):
         self.ypoly_key = ypoly_key
         self.ft_out_key = ft_out_key
         self.bt_out_key = bt_out_key
-        self.ft_dvf_key = ft_dvf_key
-        self.bt_dvf_key = bt_dvf_key
-        self.bt_dvf_key = bt_dvf_key
-        self.bt_dvf_key = bt_dvf_key
         self.xlm_key = xlm_key
         self.ylm_key = ylm_key
         self.D = 3
@@ -140,21 +135,16 @@ class STPSRPM(CostFunction):
         self.ypoly_vtk = input_features[self.ypoly_key]
         self.xpoints = self.xpoly_vtk.GetNumberOfPoints()
         self.ypoints = self.ypoly_vtk.GetNumberOfPoints()
-
         self.xlm_vtk = input_features.get(self.xlm_key)
         self.ylm_vtk = input_features.get(self.ylm_key)
         self.lm_size = 0
         if self.xlm_vtk and self.ylm:
-            self.lm_size = self.xlm_vtk.GetNumberOfPoints()
             if self.xlm_vtk.GetNumberOfPoints() != self.ylm_vtk.GetNumberOfPoints():
                 raise ValueError("Provided landmarks does not have the same size")
-
-        self.ft_output = None
-        self.bt_output = None
-        self.ft_vectorfield = None
-        self.bt_vectorfield = None
+            self.lm_size = self.xlm_vtk.GetNumberOfPoints()
         self.allocate_data()
-        self.update()
+        input_features[self.ft_out_key], input_features[self.bt_out_key] = self.update()
+        return input_features
 
     def allocate_data(self):
         self.xpoly = convert_vtk_to_af(self.xpoly_vtk, force_float32=True)
@@ -405,6 +395,7 @@ class STPSRPM(CostFunction):
                     virtual_ypoly = self.warp_QR(ypoly_res, self.K_bt, self.d_bt, self.c_bt)
                 self.T *= self.anneal_rate
 
-                virtual_xpoly_vtk = convert_af_to_vtk(self.xpoly_vtk, virtual_xpoly[self.lm_size:self.xpoints, :])
-                virtual_ypoly_vtk = convert_af_to_vtk(self.ypoly_vtk, virtual_ypoly[self.lm_size:self.ypoints, :])
-        xxx = 1
+        # TODO CompMeanDist(ypoly, virtual_xpoly);
+        virtual_xpoly_vtk = convert_af_to_vtk(self.xpoly_vtk, virtual_xpoly[self.lm_size:self.xpoints, :])
+        virtual_ypoly_vtk = convert_af_to_vtk(self.ypoly_vtk, virtual_ypoly[self.lm_size:self.ypoints, :])
+        return virtual_xpoly_vtk, virtual_ypoly_vtk

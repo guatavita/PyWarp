@@ -62,10 +62,12 @@ def main():
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
+        # TODO compute DVF between poly
+        # add post_keys for ZNorm to process created poly from stps_rpm
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', T_init=0.01, T_final=0.001)
     )
 
     # build model
