@@ -15,7 +15,29 @@ bastien.rigaud@univ-rennes1.fr
 
 ## Example 
 
-```python:main.py
+```python
+def main():
+    deformable_model = BuildModel(dataloader=ImageReaderWriter)
+    input_features = {
+        'xmask_path': r'C:\Data\Data_test\Prostate.nii.gz',
+        'ymask_path': r'C:\Data\Data_test\Vessie_ext.nii.gz',
+    }
+    deformable_model.set_processors([
+        ConvertMaskToPoly(input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')),
+        GetSITKInfo(input_keys=('xmask', 'ymask')),
+        SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
+        ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
+        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
+    ])
+    deformable_model.set_cost_functions(
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+    )
+
+    # build model
+    deformable_model.load_data(input_features)
+    deformable_model.pre_process(input_features)
+    deformable_model.run_cost_function(input_features)
+    deformable_model.post_process(input_features)
 ```
 
 ## Dependencies
