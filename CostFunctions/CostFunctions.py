@@ -15,8 +15,8 @@ import math
 backends = af.get_available_backends()
 if 'cuda' in backends:
     af.set_backend('cuda')
-elif 'opencl' in backends:
-    af.set_backend('opencl')
+# elif 'opencl' in backends:
+#     af.set_backend('opencl')
 else:
     af.set_backend('cpu')
 
@@ -60,11 +60,11 @@ class CostFunction(object):
 def compute_kernel(array):
     N = array.dims()[0]
     D = array.dims()[1]
-    kernel = af.constant(0, N, N, f32)
+    kernel = af.constant(0, N, N, dtype=f32)
     for i in range(D):
         temp1 = af.tile(array[:, i], 1, N)
         temp2 = af.tile(af.transpose(array[:, i]), N, 1)
-        kernel = kernel + pow(temp1 - temp2, 2)
+        kernel = kernel + af.pow(temp1 - temp2, 2)
     return kernel
 
 
@@ -75,7 +75,7 @@ def compute_kernel_2(array1, array2):
     kernel = af.constant(0, M, N, dtype=f32)
     for i in range(D):
         temp1 = af.tile(array1[:, i], 1, N)
-        temp2 = af.tile(af.transpose(array2[:, i], M, 1))
+        temp2 = af.tile(af.transpose(array2[:, i]), M, 1)
         kernel = kernel + af.pow(temp1 - temp2, 2)
     return kernel
 
@@ -156,8 +156,8 @@ class STPSRPM(CostFunction):
             xxx = 1
             # xscalar_vtk = vtkDoubleArray::SafeDownCast(xpoly_vtk->GetPointData()->GetScalars());
             # yscalar_vtk = vtkDoubleArray::SafeDownCast(ypoly_vtk->GetPointData()->GetScalars());
-            # xscalar = constant(0, xpoints, xscalar_vtk->GetNumberOfComponents(), f32);
-            # yscalar = constant(0, ypoints, yscalar_vtk->GetNumberOfComponents(), f32);
+            # xscalar = constant(0, xpoints, xscalar_vtk->GetNumberOfComponents(), dtype=f32);
+            # yscalar = constant(0, ypoints, yscalar_vtk->GetNumberOfComponents(), dtype=f32);
             # ConvertScalarstoAF(xscalar_vtk, xscalar);
             # ConvertScalarstoAF(yscalar_vtk, yscalar);
 
@@ -175,8 +175,8 @@ class STPSRPM(CostFunction):
 
             # update scalar with dummy scalars for the landmark ( not influenced)
             # if self.scalarflag:
-            #     xscalar = af.join(0, af.constant(0, self.lm_size, self.xscalar_vtk.GetNumberOfComponents(), f32), self.xscalar)
-            #     yscalar = af.join(0, af.constant(0, self.lm_size, self.yscalar_vtk.GetNumberOfComponents(), f32), self.yscalar)
+            #     xscalar = af.join(0, af.constant(0, self.lm_size, self.xscalar_vtk.GetNumberOfComponents(), dtype=f32), self.xscalar)
+            #     yscalar = af.join(0, af.constant(0, self.lm_size, self.yscalar_vtk.GetNumberOfComponents(), dtype=f32), self.yscalar)
 
         self.m_matrix = af.constant(0, self.xpoints, self.ypoints, dtype=f32)
         self.m_outliers_row = af.constant(0, self.ypoints, dtype=f32)
@@ -203,7 +203,7 @@ class STPSRPM(CostFunction):
                 af.sum(af.pow(virtual_ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1) + af.sum(
             af.pow(self.ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1)) / (4 * self.T_init))
         m_outliers_col = (1 / self.T_init) * af.exp(-(
-                sum(pow(virtual_xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1) + af.sum(
+                af.sum(af.pow(virtual_xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1) + af.sum(
             af.pow(self.xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1)) / (4 * self.T_init))
         return m_matrix, m_outliers_row, m_outliers_col
 
@@ -222,13 +222,13 @@ class STPSRPM(CostFunction):
             m_outliers_col = m_outliers_col / sumx
 
             # --- Column normalization - ----------------------------------------
-            sumy = sum(m_matrix, 0) + af.transpose(m_outliers_row)
+            sumy = af.sum(m_matrix, 0) + af.transpose(m_outliers_row)
             m_matrix = m_matrix / af.tile(sumy, xpoly_dim, 1)
             m_outliers_row = m_outliers_row / af.transpose(sumy)
             err = (af.matmul(sumx - 1, sumx - 1, af.MATPROP.TRANS) + af.matmul(sumy - 1, sumy - 1, af.MATPROP.NONE, af.MATPROP.TRANS)) / (xpoly_dim + ypoly_dim)
 
-            if err[0, 0] < norm_threshold or norm_it >= norm_maxit:
-                return m_matrix
+            if err[0, 0].scalar() < norm_threshold or norm_it >= norm_maxit:
+                return m_matrix, m_outliers_row, m_outliers_col
             norm_it += 1
 
     def normalize_m(self, m_matrix):
@@ -259,9 +259,10 @@ class STPSRPM(CostFunction):
         sumx = af.sum(m_matrix, 1)
         return af.matmul(m_matrix, poly) / af.tile(sumx, 1, pts_dim)
 
-    def computeTPS_QR(self, poly, virtual_poly, lambda1, lambda2, K, d, c, sigma=1):
+    def computeTPS_QR(self, poly, virtual_poly, lambda1, lambda2, sigma=1):
         '''
         Compute the TPS transformation with QR decomposition
+        # TODO check if we can change sigma, currently not used
         :param poly: source points
         :param virtual_poly: transformed poly
         :param lambda1: non linear weight
@@ -274,7 +275,7 @@ class STPSRPM(CostFunction):
         '''
         N = poly.dims()[0]
         D = poly.dims()[1]
-        ones = af.constant(1, N, f32)
+        ones = af.constant(1, N, dtype=f32)
 
         # create kernel
         K = -af.sqrt(compute_kernel(poly))
@@ -290,18 +291,18 @@ class STPSRPM(CostFunction):
         q, r, tau = af.qr(S)
 
         # Still need to extract Q1, Q2 and R
-        q1 = q.cols(0, D) # size is [N][D+1]
-        q2 = q.cols(D + 1, N - 1) # size is [N][N - D - 1]
-        R = r.rows(0, D) # size is [D + 1, D + 1]
+        q1 = q[:,0:D+1] # size is [N][D+1]
+        q2 = q[:,D + 1:N] # size is [N][N - D - 1]
+        R = r[0:D+1,:] # size is [D + 1, D + 1]
 
         # create some matrices to compute c and d
-        gamma = af.matmul(af.inverse(af.matmul(af.matmul(q2, K, af.MATPROP.TRANS), q2) + lambda1 * af.identity(N - D - 1, N - D - 1, f32)), af.matmul(q2, T, af.MATPROP.TRANS))
+        gamma = af.matmul(af.inverse(af.matmul(af.matmul(q2, K, af.MATPROP.TRANS), q2) + lambda1 * af.identity(N - D - 1, N - D - 1, dtype=f32)), af.matmul(q2, T, af.MATPROP.TRANS))
         c = af.matmul(q2, gamma)
 
         # d = inv(R) * q1' * (y-K*q2*gamma);
         # d = matmul(inverse(R), matmul(q1, (T - matmul(K, c)), AF_MAT_TRANS));
         # with regularization using lambda2
-        d = af.matmul(af.inverse(af.matmul(R, R, af.MATPROP.TRANS) + lambda2 * af.identity(D + 1, D + 1, f32)), af.matmul(af.transpose(R), af.transpose(q1), (T - af.matmul(K, c))) - af.matmul(R, R, af.MATPROP.TRANS)) + af.identity(D + 1, D + 1, f32)
+        d = af.matmul(af.inverse(af.matmul(R, R, af.MATPROP.TRANS) + lambda2 * af.identity(D + 1, D + 1, dtype=f32)), af.matmul(af.transpose(R), af.matmul(af.transpose(q1), (T - af.matmul(K, c)))) - af.matmul(R, R, af.MATPROP.TRANS)) + af.identity(D + 1, D + 1, dtype=f32)
         return K, d, c
 
     def warp_QR(self, poly, K, d, c):
@@ -314,12 +315,12 @@ class STPSRPM(CostFunction):
         :return:
         '''
         N = poly.dims()[0]
-        ones = af.constant(1, N, f32)
+        ones = af.constant(1, N, dtype=f32)
         #  create source point array for AF with extra "1" column
         S = af.join(1, ones, poly)
         output = af.matmul(S, d) + af.matmul(K, c)
         #TODO virtual_poly = output.cols(1, af::end)
-        virtual_poly = output.cols[1, -1:]
+        virtual_poly = output[:,1:]
         return virtual_poly
 
     def update(self):
@@ -365,7 +366,7 @@ class STPSRPM(CostFunction):
                     # }
 
                     # check if nan or + / -inf in the m_matrix (bad mapping)
-                    if af.sum(af.sum(af.isnan(m_matrix) + af.isinf(m_matrix))) > 1:
+                    if af.sum(af.isnan(m_matrix) + af.isinf(m_matrix)) > 1:
                         print("---------------------------------------------")
                         print("    EXIT_FAILURE")
                         print("    NaN or -/+inf were found in the m_matrix")
@@ -374,7 +375,7 @@ class STPSRPM(CostFunction):
                         return
 
                     if self.iterative_norm:
-                        m_matrix = self.normalize_it_m(m_matrix)
+                        m_matrix, m_outliers_row, m_outliers_col = self.normalize_it_m(m_matrix, m_outliers_row, m_outliers_col)
                     else:
                         m_matrix = self.normalize_m(m_matrix)
 
@@ -384,11 +385,8 @@ class STPSRPM(CostFunction):
                     virtual_ypoly = self.update_virtual(ypoly_res, m_matrix)
                     virtual_xpoly = self.update_virtual(xpoly_res, af.transpose(m_matrix))
 
-                    self.K_ft, self.d_ft, self.c_ft = self.computeTPS_QR(xpoly_res, virtual_ypoly, lambda1, lambda2, 1,
-                                                                         self.K_ft, self.d_ft, self.c_ft)
-
-                    self.K_bt, self.d_bt, self.c_bt = self.computeTPS_QR(ypoly_res, virtual_xpoly, lambda1, lambda2, 1,
-                                                                         self.K_bt, self.d_bt, self.c_bt)
+                    self.K_ft, self.d_ft, self.c_ft = self.computeTPS_QR(xpoly_res, virtual_ypoly, lambda1, lambda2)
+                    self.K_bt, self.d_bt, self.c_bt = self.computeTPS_QR(ypoly_res, virtual_xpoly, lambda1, lambda2)
 
                     virtual_xpoly = self.warp_QR(xpoly_res, self.K_ft, self.d_ft, self.c_ft)
                     virtual_ypoly = self.warp_QR(ypoly_res, self.K_bt, self.d_bt, self.c_bt)
