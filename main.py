@@ -5,6 +5,7 @@
 # 35042 Rennes, FRANCE
 # bastien.rigaud@univ-rennes1.fr
 # Description:
+import time
 
 from IOTools.IOTools import *
 from Processors.Processors import *
@@ -35,18 +36,24 @@ class BuildModel(object):
     def pre_process(self, input_features):
         for processor in self.processors:
             print('Performing pre process {}'.format(processor))
+            start_time = time.time()
             input_features = processor.pre_process(input_features=input_features)
+            print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
         return input_features
 
     def post_process(self, input_features):
         for processor in self.processors[::-1]:  # In reverse order now
             print('Performing post process {}'.format(processor))
+            start_time = time.time()
             input_features = processor.post_process(input_features=input_features)
+            print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
         return input_features
 
     def run_cost_function(self, input_features):
         print('Performing cost function {}'.format(self.cost_function))
+        start_time = time.time()
         input_features = self.cost_function.parse(input_features=input_features)
+        print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
         return input_features
 
 
@@ -67,7 +74,7 @@ def main():
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', T_init=0.01, T_final=0.001)
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
     )
 
     # build model
@@ -76,7 +83,7 @@ def main():
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
 
-
+# TODO append structues and define label scalar on it for multi organ stpsrpm
 # TODO finite element model using unstructured structure
 # TODO label of class per structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
