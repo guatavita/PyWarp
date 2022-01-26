@@ -13,6 +13,10 @@ Campus de Beaulieu, Université de Rennes 1
 35042 Rennes, FRANCE
 bastien.rigaud@univ-rennes1.fr
 
+<p align="center">
+    <img src="Examples/output_colour.gif" height=200>
+</p>
+
 ## Example 
 
 ```python
