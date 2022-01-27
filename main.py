@@ -38,7 +38,7 @@ class BuildModel(object):
             print('Performing pre process {}'.format(processor))
             start_time = time.time()
             input_features = processor.pre_process(input_features=input_features)
-            print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
+            print("     Elapsed time: {:5.2f} seconds".format(time.time() - start_time))
         return input_features
 
     def post_process(self, input_features):
@@ -46,14 +46,14 @@ class BuildModel(object):
             print('Performing post process {}'.format(processor))
             start_time = time.time()
             input_features = processor.post_process(input_features=input_features)
-            print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
-        return input_features
+            print("     Elapsed time: {:5.2f} seconds".format(time.time() - start_time))
+            return input_features
 
     def run_cost_function(self, input_features):
         print('Performing cost function {}'.format(self.cost_function))
         start_time = time.time()
         input_features = self.cost_function.parse(input_features=input_features)
-        print("     Elapsed time: {} seconds".format(int(time.time() - start_time)))
+        print("     Elapsed time: {:5.2f} seconds".format(time.time() - start_time))
         return input_features
 
 
@@ -69,9 +69,10 @@ def main():
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
-        # TODO compute DVF between poly
-        # add post_keys for ZNorm to process created poly from stps_rpm
-        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly')),
+        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
+                  post_process_keys=('ft_poly', 'bt_poly')),
+        CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
+                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
         STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')

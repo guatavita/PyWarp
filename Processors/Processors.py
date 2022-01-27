@@ -122,9 +122,11 @@ class SITKToNumpy(Processor):
 
 class ZNormPoly(Processor):
     def __init__(self, input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                 centroid_keys=('centroid', 'centroid',), scale_keys=('scale', 'scale')):
+                 post_process_keys=('xpoly', 'ypoly'), centroid_keys=('centroid', 'centroid',),
+                 scale_keys=('scale', 'scale')):
         self.input_keys = input_keys
         self.output_keys = output_keys
+        self.post_process_keys = post_process_keys
         self.centroid_keys = centroid_keys
         self.scale_keys = scale_keys
 
@@ -172,12 +174,25 @@ class ZNormPoly(Processor):
 
     def post_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
-        for input_key, output_key, centroid_key, scale_key in zip(self.input_keys, self.output_keys, self.centroid_keys,
-                                                                  self.scale_keys):
-            polydata = input_features[input_key]
-            centroid = input_features[input_key + '_' + centroid_key]
-            scale = input_features[input_key + '_' + scale_key]
+        for post_process_key, output_key, centroid_key, scale_key in zip(self.post_process_keys, self.output_keys,
+                                                                         self.centroid_keys,
+                                                                         self.scale_keys):
+            polydata = input_features[post_process_key]
+            centroid = input_features[post_process_key + '_' + centroid_key]
+            scale = input_features[post_process_key + '_' + scale_key]
             input_features[output_key] = self.unapply_z_norm(polydata, centroid, scale)
+        return input_features
+
+
+class CopyKey(Processor):
+    def __init__(self, input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
+                 output_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale')):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    def pre_process(self, input_features):
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            input_features[output_key] = input_features[input_key]
         return input_features
 
 
