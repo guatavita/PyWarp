@@ -48,7 +48,7 @@ class BuildModel(object):
             start_time = time.time()
             input_features = processor.post_process(input_features=input_features)
             print("     Elapsed time: {:5.2f} seconds".format(time.time() - start_time))
-            return input_features
+        return input_features
 
     def run_cost_function(self, input_features):
         print('Performing cost function {}'.format(self.cost_function))

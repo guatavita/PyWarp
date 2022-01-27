@@ -243,7 +243,7 @@ class CreateDVF(Processor):
     def pre_process(self, input_features):
         return input_features
 
-    def pre_process(self, input_features):
+    def post_process(self, input_features):
         for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys, self.output_keys):
             input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key])
         return input_features
