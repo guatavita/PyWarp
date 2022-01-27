@@ -14,6 +14,7 @@ from CostFunctions.CostFunctions import *
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 from PlotVTK.PlotVTK import plot_vtk
 
+
 class BuildModel(object):
     def __init__(self, dataloader=DataReaderWriter):
         self.dataloader = dataloader
@@ -69,13 +70,15 @@ def main():
         GetSITKInfo(input_keys=('xmask', 'ymask')),
         SITKToNumpy(input_keys=('xmask', 'ymask'), output_keys=('xmask', 'ymask')),
         ACVDResampling(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'), np_points=(2000, 2000)),
+        CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
+                  output_keys=('ft_dvf', 'bt_dvf',)),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
                   post_process_keys=('ft_poly', 'bt_poly')),
         CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
-                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
+                output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', T_init=0.0015)
     )
 
     # build model
@@ -83,6 +86,7 @@ def main():
     deformable_model.pre_process(input_features)
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
+
 
 # TODO append structues and define label scalar on it for multi organ stpsrpm
 # TODO finite element model using unstructured structure

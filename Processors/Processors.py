@@ -220,3 +220,30 @@ class AlignCentroid(Processor):
                 translation = tuple([-trans for trans in input_features[output_key + '_translation']])
                 input_features[output_key] = translate_polydata(input_features[output_key], translation=translation)
         return input_features
+
+
+class CreateDVF(Processor):
+    def __init__(self, reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
+                 output_keys=('ft_dvf', 'bt_dvf',)):
+        self.reference_keys = reference_keys
+        self.deformed_keys = deformed_keys
+        self.output_keys = output_keys
+
+    def create_dvf(self, reference, deformed):
+        if reference.GetNumberOfPoints() != deformed.GetNumberOfPoints():
+            raise ValueError("Fixed and moving polydata must have same number of points")
+        output = vtk.vtkPolyData()
+        output.DeepCopy(reference)
+        fixed_points = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
+        moving_points = numpy_support.vtk_to_numpy(deformed.GetPoints().GetData())
+        vector_field = moving_points-fixed_points
+        output.GetPointData().SetVectors(vector_field)
+        return output
+
+    def pre_process(self, input_features):
+        return input_features
+
+    def pre_process(self, input_features):
+        for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys, self.output_keys):
+            input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key])
+        return input_features
