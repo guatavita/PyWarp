@@ -143,7 +143,9 @@ class STPSRPM(CostFunction):
                 raise ValueError("Provided landmarks does not have the same size")
             self.lm_size = self.xlm_vtk.GetNumberOfPoints()
         self.allocate_data()
-        input_features[self.ft_out_key], input_features[self.bt_out_key] = self.update()
+        virtual_xpoly, virtual_ypoly = self.update()
+        input_features[self.ft_out_key] = convert_af_to_vtk(self.xpoly_vtk, virtual_xpoly[self.lm_size:self.xpoints, :])
+        input_features[self.bt_out_key] = convert_af_to_vtk(self.ypoly_vtk, virtual_ypoly[self.lm_size:self.ypoints, :])
         return input_features
 
     def allocate_data(self):
@@ -374,7 +376,7 @@ class STPSRPM(CostFunction):
                         print("    NaN or -/+inf were found in the m_matrix")
                         print("    Program has been interrupted")
                         print("---------------------------------------------")
-                        return
+                        return virtual_xpoly, virtual_ypoly
 
                     if self.iterative_norm:
                         m_matrix, m_outliers_row, m_outliers_col = self.normalize_it_m(m_matrix, m_outliers_row,
@@ -396,6 +398,4 @@ class STPSRPM(CostFunction):
                 self.T *= self.anneal_rate
 
         # TODO CompMeanDist(ypoly, virtual_xpoly);
-        virtual_xpoly_vtk = convert_af_to_vtk(self.xpoly_vtk, virtual_xpoly[self.lm_size:self.xpoints, :])
-        virtual_ypoly_vtk = convert_af_to_vtk(self.ypoly_vtk, virtual_ypoly[self.lm_size:self.ypoints, :])
-        return virtual_xpoly_vtk, virtual_ypoly_vtk
+        return virtual_xpoly, virtual_ypoly

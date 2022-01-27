@@ -238,6 +238,7 @@ class CreateDVF(Processor):
         fixed_points = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
         moving_points = numpy_support.vtk_to_numpy(deformed.GetPoints().GetData())
         vector_field = numpy_support.numpy_to_vtk(moving_points-fixed_points)
+        vector_field.SetName('VectorField')
         output.GetPointData().SetVectors(vector_field)
         if set_scalars:
             vector_magn = numpy_support.numpy_to_vtk(np.sqrt(np.sum(np.square(moving_points-fixed_points), axis=-1)))
