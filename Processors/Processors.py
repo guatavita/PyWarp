@@ -224,20 +224,25 @@ class AlignCentroid(Processor):
 
 class CreateDVF(Processor):
     def __init__(self, reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
-                 output_keys=('ft_dvf', 'bt_dvf',)):
+                 output_keys=('ft_dvf', 'bt_dvf',), set_scalars=True):
         self.reference_keys = reference_keys
         self.deformed_keys = deformed_keys
         self.output_keys = output_keys
+        self.set_scalars = set_scalars
 
-    def create_dvf(self, reference, deformed):
+    def create_dvf(self, reference, deformed, set_scalars=True):
         if reference.GetNumberOfPoints() != deformed.GetNumberOfPoints():
             raise ValueError("Fixed and moving polydata must have same number of points")
         output = vtk.vtkPolyData()
         output.DeepCopy(reference)
         fixed_points = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
         moving_points = numpy_support.vtk_to_numpy(deformed.GetPoints().GetData())
-        vector_field = moving_points-fixed_points
+        vector_field = numpy_support.numpy_to_vtk(moving_points-fixed_points)
         output.GetPointData().SetVectors(vector_field)
+        if set_scalars:
+            vector_magn = numpy_support.numpy_to_vtk(np.sqrt(np.sum(np.square(moving_points-fixed_points), axis=-1)))
+            vector_magn.SetName('Magnitude')
+            output.GetPointData().SetScalars(vector_magn)
         return output
 
     def pre_process(self, input_features):
@@ -245,5 +250,6 @@ class CreateDVF(Processor):
 
     def post_process(self, input_features):
         for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys, self.output_keys):
-            input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key])
+            input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key],
+                                                         set_scalars=self.set_scalars)
         return input_features
