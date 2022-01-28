@@ -56,10 +56,12 @@ def convert_af_to_vtk(template, array):
 
 
 def convert_scalars_to_af(scalar, force_float32=True, transpose=True):
-    points = numpy_support.vtk_to_numpy(scalar)
+    scalars = numpy_support.vtk_to_numpy(scalar)
     if force_float32:
-        points = points.astype(dtype=np.float32)
-    af_array = af.Array(points.ctypes.data, points.shape[::-1], points.dtype.char)
+        scalars = scalars.astype(dtype=np.float32)
+    if len(scalars.shape) == 1:
+        scalars = scalars[..., None]
+    af_array = af.Array(scalars.ctypes.data, scalars.shape[::-1], scalars.dtype.char)
     return af_array if not transpose else af.transpose(af_array)
 
 
@@ -68,6 +70,8 @@ def compute_centroid_af(array):
 
 
 def compute_kernel(array):
+    if not len(array.dims()) > 1:
+        raise ValueError("Array must be 2D to compute kernel")
     N = array.dims()[0]
     D = array.dims()[1]
     kernel = af.constant(0, N, N, dtype=f32)
@@ -81,7 +85,11 @@ def compute_kernel(array):
 def compute_kernel_2(array1, array2):
     M = array1.dims()[0]
     N = array2.dims()[0]
-    D = array1.dims()[1]
+    if len(array1.dims()) > 1:
+        D = array1.dims()[1]
+    else:
+        D = 1
+
     kernel = af.constant(0, M, N, dtype=f32)
     for i in range(D):
         temp1 = af.tile(array1[:, i], 1, N)
@@ -98,7 +106,7 @@ class CostFunction(object):
 class STPSRPM(CostFunction):
     def __init__(self, xpoly_key='xpoly', ypoly_key='xpoly', ft_out_key='ft_poly', bt_out_key='bt_poly',
                  lambda1_init=0.01, lambda2_init=1, T_init=0.5, T_final=0.001, anneal_rate=0.93, threshold=0.000001,
-                 use_scalar_vtk=False, xlm_key=None, ylm_key=None, passband=[1], iterative_norm=True):
+                 use_scalar_vtk=False, xlm_key=None, ylm_key=None, passband=[1], iterative_norm=True, nbiter=None):
         """
         :param xpoly_key: source input as a VTK polydata
         :param ypoly_key: target input as a VTK polydata
@@ -113,6 +121,7 @@ class STPSRPM(CostFunction):
         :param ylm: vtk pts (landmarks) related to the y shape with same index ordering as lmy (use as constraint in the matrix m)
         :param passband: passband value for smooth filter (advice: 0.01x0.1x1) (default=1 /eq to no smoothing)
         :param iterative_norm: iterative normalization of the matrix m (default: True)
+        :param nbiter: override number of iteration (mostly for quick debug)
         """
         self.xpoly_key = xpoly_key
         self.ypoly_key = ypoly_key
@@ -132,7 +141,9 @@ class STPSRPM(CostFunction):
         self.T_init = T_init
         self.T = T_init
         self.anneal_rate = anneal_rate
-        self.nbiter = round(math.log(T_final / T_init) / math.log(anneal_rate))
+        self.nbiter = nbiter
+        if not self.nbiter:
+            self.nbiter = round(math.log(T_final / T_init) / math.log(anneal_rate))
 
     def parse(self, input_features):
         _check_keys_(input_features, (self.xpoly_key, self.ypoly_key))
@@ -161,8 +172,8 @@ class STPSRPM(CostFunction):
         self.ypoly = convert_vtk_to_af(self.ypoly_vtk, force_float32=True)
 
         if self.use_scalar_vtk:
-            self.xscalar = convert_scalars_to_af(self.xscalar_vtk)
-            self.yscalar = convert_scalars_to_af(self.yscalar_vtk)
+            self.xscalar = convert_scalars_to_af(self.xscalar_vtk, force_float32=True)
+            self.yscalar = convert_scalars_to_af(self.yscalar_vtk, force_float32=True)
 
         if self.xlm_vtk and self.ylm_vtk:
             self.xlm = convert_vtk_to_af(self.xlm_vtk, force_float32=True)

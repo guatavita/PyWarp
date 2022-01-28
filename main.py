@@ -84,7 +84,7 @@ def main():
                                    'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
                        output_keys=('fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum',
                                     'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
-                       np_points=(1500, 1000, 1500, 1500, 1000, 1500)),
+                       np_points=(750, 500, 750, 750, 500, 750,)),
         JoinPoly(input_key_list=['fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum'], output_key='xpoly', use_scalar=True),
         JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly', use_scalar=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
@@ -96,7 +96,7 @@ def main():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly')
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=1)
     )
 
     # build model
@@ -104,12 +104,10 @@ def main():
     deformable_model.pre_process(input_features)
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
-    plot_vtk([input_features['ft_dvf'], input_features['bt_dvf']])
+    plot_vtk(input_features['ft_dvf'])
 
 
-# TODO append structues and define label scalar on it for multi organ stpsrpm
 # TODO finite element model using unstructured structure
-# TODO label of class per structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
     main()

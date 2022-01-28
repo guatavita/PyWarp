@@ -122,7 +122,7 @@ class SITKToNumpy(Processor):
 
 class ZNormPoly(Processor):
     def __init__(self, input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                 post_process_keys=('xpoly', 'ypoly'), centroid_keys=('centroid', 'centroid',),
+                 post_process_keys=(), centroid_keys=('centroid', 'centroid',),
                  scale_keys=('scale', 'scale')):
         self.input_keys = input_keys
         self.output_keys = output_keys
