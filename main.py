@@ -90,13 +90,13 @@ def main():
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                  post_process_keys=('xpoly', 'ypoly')),
-        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
+                  post_process_keys=()),#post_process_keys=('xpoly', 'ypoly')
+        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=()), #post_process_keys=('ft_poly', 'bt_poly')
         CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=1)
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True)
     )
 
     # build model
@@ -104,7 +104,7 @@ def main():
     deformable_model.pre_process(input_features)
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
-    plot_vtk(input_features['ft_dvf'])
+    plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
 
 
 # TODO finite element model using unstructured structure
