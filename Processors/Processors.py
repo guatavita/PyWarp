@@ -237,11 +237,11 @@ class CreateDVF(Processor):
         output.DeepCopy(reference)
         fixed_points = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
         moving_points = numpy_support.vtk_to_numpy(deformed.GetPoints().GetData())
-        vector_field = numpy_support.numpy_to_vtk(moving_points-fixed_points)
+        vector_field = numpy_support.numpy_to_vtk(moving_points - fixed_points)
         vector_field.SetName('VectorField')
         output.GetPointData().SetVectors(vector_field)
         if set_scalars:
-            vector_magn = numpy_support.numpy_to_vtk(np.sqrt(np.sum(np.square(moving_points-fixed_points), axis=-1)))
+            vector_magn = numpy_support.numpy_to_vtk(np.sqrt(np.sum(np.square(moving_points - fixed_points), axis=-1)))
             vector_magn.SetName('Magnitude')
             output.GetPointData().SetScalars(vector_magn)
         return output
@@ -254,6 +254,7 @@ class CreateDVF(Processor):
             input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key],
                                                          set_scalars=self.set_scalars)
         return input_features
+
 
 class JoinPoly(Processor):
     def __init__(self, input_key_list=None, output_key='xpoly', use_scalar=True, scalar_name='label_scalar'):
@@ -285,3 +286,47 @@ class JoinPoly(Processor):
         return input_features
 
 
+class DistanceBasedMetrics(Processor):
+    def __init__(self, reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',), paired=False):
+        '''
+        :param reference_keys:
+        :param deformed_keys:
+        :param paired: bool if points from the reference and moving mesh have the same index (order)
+        '''
+        self.reference_keys = reference_keys
+        self.deformed_keys = deformed_keys
+        self.paired = paired
+
+    def compute_distance_metrics(self, reference, moving, paired=False):
+        reference = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
+        moving = numpy_support.vtk_to_numpy(moving.GetPoints().GetData())
+        if paired:
+            distances = np.sort(np.sqrt(np.sum(np.square(reference - moving), -1)))
+            dta_metric = np.mean(distances)
+            hd_metric = distances[-1]
+            hd_95th_metric = distances[int(0.95 * len(distances))]
+        else:
+            M = reference.shape[0]
+            N = moving.shape[0]
+            D = reference.shape[-1]
+            kernel = np.zeros((M, N))
+            for i in range(D):
+                temp1 = np.tile(reference[:, i], (N, 1))
+                temp2 = np.transpose(np.tile(moving[:, i], (M, 1)))
+                kernel = kernel + np.square(temp1 - temp2)
+            # compute distances in both directions and return average
+            distances1 = np.sort(np.min(kernel, axis=-1))
+            distances2 = np.sort(np.min(kernel, axis=0))
+            dta_metric = (np.mean(distances1) + np.mean(distances2))/2
+            # TODO Double check HD distance
+            hd_metric = (distances1[-1]+distances2[-1])/2
+            hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))])/2
+        return dta_metric, hd_metric, hd_95th_metric
+
+
+    def post_process(self, input_features):
+        for reference_key, deformed_key in zip(self.reference_keys, self.deformed_keys):
+            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
+                                                                                  input_features[deformed_key],
+                                                                                  paired=self.paired)
+            print("DTA: {}, HD: {}, HD95th: {}".format(dta_metric, hd_metric, hd_95th_metric))

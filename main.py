@@ -89,14 +89,15 @@ def main():
         JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly', use_scalar=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
+        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), deformed_keys=('bt_poly', 'ft_poly',), paired=False),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                  post_process_keys=()),#post_process_keys=('xpoly', 'ypoly')
-        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=()), #post_process_keys=('ft_poly', 'bt_poly')
+                  post_process_keys=('xpoly', 'ypoly')),
+        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
         CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True)
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=3)
     )
 
     # build model
