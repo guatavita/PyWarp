@@ -254,3 +254,34 @@ class CreateDVF(Processor):
             input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key],
                                                          set_scalars=self.set_scalars)
         return input_features
+
+class JoinPoly(Processor):
+    def __init__(self, input_key_list=None, output_key='xpoly', use_scalar=True, scalar_name='label_scalar'):
+        if input_key_list is None:
+            input_key_list = []
+        self.input_key_list = input_key_list
+        self.output_key = output_key
+        self.use_scalar = use_scalar
+        self.scalar_name = scalar_name
+
+    def pre_process(self, input_features):
+        append_filter = vtk.vtkAppendPolyData()
+        i = 0
+        for poly_key in self.input_key_list:
+            temp = vtk.vtkPolyData()
+            temp.DeepCopy(input_features[poly_key])
+            if self.use_scalar:
+                array_names = [temp.GetPointData().GetArrayName(arrayid) for arrayid in
+                               range(temp.GetPointData().GetNumberOfArrays())]
+                if self.scalar_name not in array_names:
+                    label_color = numpy_support.numpy_to_vtk(i * np.ones(temp.GetNumberOfPoints()))
+                    label_color.SetName(self.scalar_name)
+                    temp.GetPointData().AddArray(label_color)
+                    temp.GetPointData().SetActiveScalars(self.scalar_name)
+            append_filter.AddInputData(temp)
+            i += 1
+        append_filter.Update()
+        input_features[self.output_key] = append_filter.GetOutput()
+        return input_features
+
+

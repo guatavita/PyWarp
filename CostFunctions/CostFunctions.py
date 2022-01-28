@@ -36,7 +36,6 @@ def _check_keys_(input_features, keys):
 
 
 # TODO ADD documentation for each function
-# TODO eval points and do we return af_array?
 # TODO add a costfunction merger to compute 2 cost functions (stpsrpm and DMR) and merge them with a lambda
 # TODO put the TPS outside?
 # TODO add target mean dist (stop when inf to 1 mm)
@@ -54,6 +53,14 @@ def convert_af_to_vtk(template, array):
     polydata.DeepCopy(template)
     polydata.GetPoints().SetData(new_points)
     return polydata
+
+
+def convert_scalars_to_af(scalar, force_float32=True, transpose=True):
+    points = numpy_support.vtk_to_numpy(scalar)
+    if force_float32:
+        points = points.astype(dtype=np.float32)
+    af_array = af.Array(points.ctypes.data, points.shape[::-1], points.dtype.char)
+    return af_array if not transpose else af.transpose(af_array)
 
 
 def compute_centroid_af(array):
@@ -91,7 +98,7 @@ class CostFunction(object):
 class STPSRPM(CostFunction):
     def __init__(self, xpoly_key='xpoly', ypoly_key='xpoly', ft_out_key='ft_poly', bt_out_key='bt_poly',
                  lambda1_init=0.01, lambda2_init=1, T_init=0.5, T_final=0.001, anneal_rate=0.93, threshold=0.000001,
-                 scalarvtk=False, xlm_key=None, ylm_key=None, passband=[1], centroid=False, iterative_norm=True):
+                 use_scalar_vtk=False, xlm_key=None, ylm_key=None, passband=[1], iterative_norm=True):
         """
         :param xpoly_key: source input as a VTK polydata
         :param ypoly_key: target input as a VTK polydata
@@ -101,12 +108,11 @@ class STPSRPM(CostFunction):
         :param t_final: final temperature value
         :param rate: annealing rate (default: 0.93)
         :param threshold: threshold the matrix-m to remove outliers (default: 0.000001)
-        :param scalarvtk: scalarvtk used to cluster group of points (0/1 none/values; default: 0)
+        :param use_scalar_vtk: use_scalar_vtk used to cluster group of points using scalar information from the vtk
         :param xlm: vtk pts (landmarks) related to the x shape with same index ordering as lmy (use as constraint in the matrix m)
         :param ylm: vtk pts (landmarks) related to the y shape with same index ordering as lmy (use as constraint in the matrix m)
         :param passband: passband value for smooth filter (advice: 0.01x0.1x1) (default=1 /eq to no smoothing)
-        :param centroid: normalize by taking in account the centroid of the shape (0/1 no/yes; default: 1)
-        :param iterative_norm: normalization of the matrix m (False/True = single/iterative; default: True)
+        :param iterative_norm: iterative normalization of the matrix m (default: True)
         """
         self.xpoly_key = xpoly_key
         self.ypoly_key = ypoly_key
@@ -116,9 +122,8 @@ class STPSRPM(CostFunction):
         self.ylm_key = ylm_key
         self.D = 3
         self.threshold = threshold
-        self.scalarvtk = scalarvtk
+        self.use_scalar_vtk = use_scalar_vtk
         self.passband = passband
-        self.centroid = centroid
         self.iterative_norm = iterative_norm
         self.perT_maxit = 2
         self.ita = 0
@@ -133,6 +138,9 @@ class STPSRPM(CostFunction):
         _check_keys_(input_features, (self.xpoly_key, self.ypoly_key))
         self.xpoly_vtk = input_features[self.xpoly_key]
         self.ypoly_vtk = input_features[self.ypoly_key]
+        if self.use_scalar_vtk:
+            self.xscalar_vtk = self.xpoly_vtk.GetPointData().GetScalars()
+            self.yscalar_vtk = self.ypoly_vtk.GetPointData().GetScalars()
         self.xpoints = self.xpoly_vtk.GetNumberOfPoints()
         self.ypoints = self.ypoly_vtk.GetNumberOfPoints()
         self.xlm_vtk = input_features.get(self.xlm_key)
@@ -152,31 +160,25 @@ class STPSRPM(CostFunction):
         self.xpoly = convert_vtk_to_af(self.xpoly_vtk, force_float32=True)
         self.ypoly = convert_vtk_to_af(self.ypoly_vtk, force_float32=True)
 
-        if self.scalarvtk:
-            xxx = 1
-            # xscalar_vtk = vtkDoubleArray::SafeDownCast(xpoly_vtk->GetPointData()->GetScalars());
-            # yscalar_vtk = vtkDoubleArray::SafeDownCast(ypoly_vtk->GetPointData()->GetScalars());
-            # xscalar = constant(0, xpoints, xscalar_vtk->GetNumberOfComponents(), dtype=f32);
-            # yscalar = constant(0, ypoints, yscalar_vtk->GetNumberOfComponents(), dtype=f32);
-            # ConvertScalarstoAF(xscalar_vtk, xscalar);
-            # ConvertScalarstoAF(yscalar_vtk, yscalar);
+        if self.use_scalar_vtk:
+            self.xscalar = convert_scalars_to_af(self.xscalar_vtk)
+            self.yscalar = convert_scalars_to_af(self.yscalar_vtk)
 
         if self.xlm_vtk and self.ylm_vtk:
             self.xlm = convert_vtk_to_af(self.xlm_vtk, force_float32=True)
             self.ylm = convert_vtk_to_af(self.ylm_vtk, force_float32=True)
-
             # join landmark with xpoly between[0:lm_size]
             self.xpoly = af.join(0, self.xlm, self.xpoly)
             self.ypoly = af.join(0, self.ylm, self.ypoly)
-
             # increase size
             self.xpoints += self.lm_size
             self.ypoints += self.lm_size
-
-            # update scalar with dummy scalars for the landmark ( not influenced)
-            # if self.scalarflag:
-            #     xscalar = af.join(0, af.constant(0, self.lm_size, self.xscalar_vtk.GetNumberOfComponents(), dtype=f32), self.xscalar)
-            #     yscalar = af.join(0, af.constant(0, self.lm_size, self.yscalar_vtk.GetNumberOfComponents(), dtype=f32), self.yscalar)
+            # update scalar with dummy scalars for the landmark (not influenced)
+            if self.use_scalar_vtk:
+                self.xscalar = af.join(0, af.constant(0, self.lm_size, self.xscalar_vtk.GetNumberOfComponents(),
+                                                      dtype=f32), self.xscalar)
+                self.yscalar = af.join(0, af.constant(0, self.lm_size, self.yscalar_vtk.GetNumberOfComponents(),
+                                                      dtype=f32), self.yscalar)
 
         self.m_matrix = af.constant(0, self.xpoints, self.ypoints, dtype=f32)
         self.m_outliers_row = af.constant(0, self.ypoints, dtype=f32)
@@ -187,18 +189,21 @@ class STPSRPM(CostFunction):
         self.K_bt = af.constant(0, self.ypoints, self.ypoints, dtype=f32)
         self.c_bt = af.constant(0, self.ypoints, self.D + 1, dtype=f32)
         self.d_bt = af.constant(0, self.D + 1, self.D + 1, dtype=f32)
-
         self.xcentroid = compute_centroid_af(self.xpoly)
         self.ycentroid = compute_centroid_af(self.ypoly)
 
-    def compute_m(self, virtual_xpoly, virtual_ypoly):
+    def compute_m(self, virtual_xpoly, virtual_ypoly, use_scalar_vtk=False):
         xpoly_dim = self.xpoly.dims()[0]
         ypoly_dim = self.ypoly.dims()[0]
 
         ft_dist = compute_kernel_2(virtual_xpoly, self.ypoly)
         bt_dist = compute_kernel_2(self.xpoly, virtual_ypoly)
 
-        m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T))
+        if use_scalar_vtk:
+            scalar_dist = compute_kernel_2(self.xscalar, self.yscalar)
+            m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T) - scalar_dist / self.T)
+        else:
+            m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T))
         m_outliers_row = (1 / self.T_init) * af.exp(-(
                 af.sum(af.pow(virtual_ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1) + af.sum(
             af.pow(self.ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1)) / (4 * self.T_init))
@@ -226,7 +231,7 @@ class STPSRPM(CostFunction):
             m_outliers_row = m_outliers_row / af.transpose(sumy)
             err = (af.matmul(sumx - 1, sumx - 1, af.MATPROP.TRANS) + af.matmul(sumy - 1, sumy - 1, af.MATPROP.NONE,
                                                                                af.MATPROP.TRANS)) / (
-                              xpoly_dim + ypoly_dim)
+                          xpoly_dim + ypoly_dim)
 
             if err[0, 0].scalar() < norm_threshold or norm_it >= norm_maxit:
                 return m_matrix, m_outliers_row, m_outliers_col
@@ -263,7 +268,7 @@ class STPSRPM(CostFunction):
     def computeTPS_QR(self, poly, virtual_poly, lambda1, lambda2, sigma=1):
         '''
         Compute the TPS transformation with QR decomposition
-        # TODO check if we can change sigma, currently not used
+        # TODO sigma currently not used
         :param poly: source points
         :param virtual_poly: transformed poly
         :param lambda1: non linear weight
@@ -299,7 +304,7 @@ class STPSRPM(CostFunction):
         # create some matrices to compute c and d
         gamma = af.matmul(af.inverse(
             af.matmul(af.matmul(q2, K, af.MATPROP.TRANS), q2) + lambda1 * af.identity(N - D - 1, N - D - 1, dtype=f32)),
-                          af.matmul(q2, T, af.MATPROP.TRANS))
+            af.matmul(q2, T, af.MATPROP.TRANS))
         c = af.matmul(q2, gamma)
 
         # d = inv(R) * q1' * (y-K*q2*gamma);
@@ -354,14 +359,11 @@ class STPSRPM(CostFunction):
             for it in range(math.floor(self.nbiter / len(self.passband))):
                 lambda1 = self.lambda1_init * self.xpoints * self.T
                 lambda2 = self.lambda2_init * self.xpoints * self.T
-                print("res: {}, iter: {}; T: {}, lambda1: {}, lambda2: {}".format(res, it, self.T, lambda1, lambda2))
+                print("res: {}, iter: {}, T: {}, lambda1: {}, lambda2: {}".format(res, it, self.T, lambda1, lambda2))
 
                 for i in range(self.perT_maxit):
-                    if self.scalarvtk:
-                        xxx = 1
-                    else:
-                        m_matrix, m_outliers_row, m_outliers_col = self.compute_m(virtual_xpoly, virtual_ypoly)
-
+                    m_matrix, m_outliers_row, m_outliers_col = self.compute_m(virtual_xpoly, virtual_ypoly,
+                                                                              use_scalar_vtk=self.use_scalar_vtk)
                     # if (lm_flag) {
                     #     m_matrix(seq(lm_size), span) = af::identity(lm_size, ypoints);
                     #     m_matrix(span, seq(lm_size)) = af::identity(xpoints, lm_size);
