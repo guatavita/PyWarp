@@ -144,7 +144,7 @@ def compute_tubular():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, nbiter=3, passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -152,11 +152,11 @@ def compute_tubular():
     deformable_model.pre_process(input_features)
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
-    plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
+    plot_vtk(input_features['xpoly'], input_features['ypoly'])
 
 
 # TODO finite element model using unstructured structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
     # compute_multi_organs()
-    compute_multi_organs()
+    compute_tubular()

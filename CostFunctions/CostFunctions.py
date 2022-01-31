@@ -174,6 +174,8 @@ class STPSRPM(CostFunction):
         if self.use_scalar_vtk:
             self.xscalar_vtk = self.xpoly_vtk.GetPointData().GetScalars()
             self.yscalar_vtk = self.ypoly_vtk.GetPointData().GetScalars()
+            if self.xscalar_vtk == None or self.yscalar_vtk == None:
+                raise ValueError("One of the two inputs has no scalar.")
         self.xpoints = self.xpoly_vtk.GetNumberOfPoints()
         self.ypoints = self.ypoly_vtk.GetNumberOfPoints()
         self.xlm_vtk = input_features.get(self.xlm_key)
