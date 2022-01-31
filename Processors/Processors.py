@@ -6,9 +6,11 @@
 # bastien.rigaud@univ-rennes1.fr
 # Description:
 
+import itertools
 import math
 import numpy as np
 import SimpleITK as sitk
+import skimage.morphology
 import vtk
 from vtk.util import numpy_support
 import pyvista as pv
@@ -20,6 +22,9 @@ from scipy.ndimage import binary_opening, binary_closing
 from threading import Thread
 from multiprocessing import cpu_count
 from queue import *
+
+import collections
+import networkx as nx
 
 from IOTools.IOTools import DataConverter
 from PlotVTK.PlotVTK import plot_vtk
@@ -34,6 +39,27 @@ def _check_keys_(input_features, keys):
     else:
         assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
                                               '{} was not found'.format(keys)
+
+
+def compute_bounding_box(annotation, padding=2):
+    '''
+    :param annotation: A binary image of shape [# images, # rows, # cols, channels]
+    :return: the min and max z, row, and column numbers bounding the image
+    '''
+    shape = annotation.shape
+    indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
+    min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
+    '''
+    Get the row values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
+    min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
+    '''
+    Get the col values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
+    min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
+    return [min_slice, max_slice, min_row, max_row, min_col, max_col]
 
 
 def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
@@ -435,3 +461,283 @@ class SimplifyMask(Processor):
         for t in threads:
             t.join()
         return input_features
+
+
+class ExtractCenterline(Processor):
+    def __init__(self, input_keys=('fixed_rectum', 'moving_rectum',),
+                 output_keys=('fixed_centerline', 'moving_centerline',)):
+        '''
+        centerline extraction and filtering based on https://github.com/gabyx/WormAnalysis
+        :param input_keys:
+        :param output_keys:
+        '''
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    class Vertex:
+        def __init__(self, point, degree=0, edges=None):
+            self.point = np.asarray(point)
+            self.degree = degree
+            self.edges = []
+            self.visited = False
+            if edges is not None:
+                self.edges = edges
+
+        def __str__(self):
+            return str(self.point)
+
+    class Edge:
+        def __init__(self, start, end=None, pixels=None):
+            self.start = start
+            self.end = end
+            self.pixels = []
+            if pixels is not None:
+                self.pixels = pixels
+            self.visited = False
+
+    def buildTree(self, img, start=None):
+        # copy image since we set visited pixels to black
+        img = img.copy()
+        shape = img.shape
+        nWhitePixels = np.sum(img)
+        # neighbor offsets (8 nbors)
+        nbPxOff = np.array([[-1, -1, 0], [-1, 0, 0], [-1, 1, 0], [0, -1, 0],
+                            [0, 1, 0], [1, -1, 0], [1, 0, 0], [1, 1, 0],
+                            [-1, -1, 1], [-1, 0, 1], [-1, 1, 1], [0, -1, 1],
+                            [0, 1, 1], [1, -1, 1], [1, 0, 1], [1, 1, 1],
+                            [-1, -1, -1], [-1, 0, -1], [-1, 1, -1], [0, -1, -1],
+                            [0, 1, -1], [1, -1, -1], [1, 0, -1], [1, 1, -1],
+                            [0, 0, 1], [0, 0, -1]])
+        queue = collections.deque()
+        # a list of all graphs extracted from the skeleton
+        graphs = []
+        blackedPixels = 0
+        # we build our graph as long as we have not blacked all white pixels!
+        while nWhitePixels != blackedPixels:
+            # if start not given: determine the first white pixel
+            if start is None:
+                it = np.nditer(img, flags=['multi_index'])
+                while not it[0]:
+                    it.iternext()
+                start = it.multi_index
+            startV = self.Vertex(start)
+            queue.append(startV)
+            # print("Start vertex: ", startV)
+            # set start pixel to False (visited)
+            img[startV.point[0], startV.point[1], startV.point[2]] = False
+            blackedPixels += 1
+            # create a new graph
+            G = nx.Graph()
+            G.add_node(startV)
+            # build graph in a breath-first manner by adding
+            # new nodes to the right and popping handled nodes to the left in queue
+            while len(queue):
+                currV = queue[0]  # get current vertex
+                # print("Current vertex: ", currV)
+                # check all neigboor pixels
+                for nbOff in nbPxOff:
+                    # pixel index
+                    pxIdx = currV.point + nbOff
+                    if (pxIdx[0] < 0 or pxIdx[0] >= shape[0]) or (pxIdx[1] < 0 or pxIdx[1] >= shape[1]) or (
+                            pxIdx[2] < 0 or pxIdx[2] >= shape[2]):
+                        continue  # current neigbor pixel out of image
+                    if img[pxIdx[0], pxIdx[1], pxIdx[2]]:
+                        # print( "nb: ", pxIdx, " white ")
+                        # pixel is white
+                        newV = self.Vertex([pxIdx[0], pxIdx[1], pxIdx[2]])
+                        # add edge from currV <-> newV
+                        G.add_edge(currV, newV, object=self.Edge(currV, newV))
+                        # G.add_edge(newV,currV)
+                        # add node newV
+                        G.add_node(newV)
+                        # push vertex to queue
+                        queue.append(newV)
+                        # set neighbor pixel to black
+                        img[pxIdx[0], pxIdx[1], pxIdx[2]] = False
+                        blackedPixels += 1
+                # pop currV
+                queue.popleft()
+            # end while
+            # empty queue
+            # current graph is finished ->store it
+            graphs.append(G)
+            # reset start
+            start = None
+        # end while
+        return graphs, img
+
+    def getEndNodes(self, g):
+        return [n for n in nx.nodes(g) if nx.degree(g, n) == 1]
+
+    def mergeEdges(self, graph):
+        # copy the graph
+        g = graph.copy()
+
+        # v0 -----edge 0--- v1 ----edge 1---- v2
+        #        pxL0=[]       pxL1=[]           the pixel lists
+        #
+        # becomes:
+        #
+        # v0 -----edge 0--- v1 ----edge 1---- v2
+        # |_________________________________|
+        #               new edge
+        #    pxL = pxL0 + [v.point]  + pxL1      the resulting pixel list on the edge
+        #
+        # an delete the middle one
+        # result:
+        #
+        # v0 --------- new edge ------------ v2
+        #
+        # where new edge contains all pixels in between!
+
+        # start not at degree 2 nodes
+        startNodes = [startN for startN in g.nodes() if nx.degree(g, startN) != 2]
+
+        for v0 in startNodes:
+            # start a line traversal from each neighbor
+            # startNNbs = nx.neighbors(g, v0) ONLY FOR nx<2.0
+            startNNbs = list(g.neighbors(v0))
+            if not len(startNNbs):
+                continue
+            counter = 0
+            v1 = startNNbs[counter]  # next nb of v0
+            while True:
+                if nx.degree(g, v1) == 2:
+                    # we have a node which has 2 edges = this is a line segment
+                    # make new edge from the two neighbors
+                    # nbs = nx.neighbors(g, v1) ONLY FOR nx<2.0
+                    nbs = list(g.neighbors(v1))
+                    # if the first neihbor is not n, make it so!
+                    if nbs[0] != v0:
+                        nbs.reverse()
+                    pxL0 = g[v0][v1]["object"].pixels  # the pixel list of the edge 0
+                    pxL1 = g[v1][nbs[1]]["object"].pixels  # the pixel list of the edge 1
+                    # fuse the pixel list from right and left and add our pixel n.point
+                    g.add_edge(v0, nbs[1], object=self.Edge(v0, nbs[1], pixels=pxL0 + [v1.point] + pxL1))
+                    # delete the node n
+                    g.remove_node(v1)
+                    # set v1 to new left node
+                    v1 = nbs[1]
+                else:
+                    counter += 1
+                    if counter == len(startNNbs):
+                        break;
+                    v1 = startNNbs[counter]  # next nb of v0
+        # weight the edges according to their number of pixels
+        for u, v, o in g.edges(data="object"):
+            g[u][v]["weight"] = len(o.pixels)
+        return g
+
+    def getLongestPath(self, graph, endNodes):
+        """
+            graph is a fully reachable graph = every node can be reached from every node
+        """
+
+        if len(endNodes) < 2:
+            raise ValueError("endNodes need to contain at least 2 nodes!")
+
+        # get all shortest paths from each endpoint to another endpoint
+        allEndPointsComb = itertools.combinations(endNodes, 2)
+        maxLength = 0
+        maxPath = None
+        for ePoints in allEndPointsComb:
+            # get shortest path for these end points pairs
+            sL = nx.dijkstra_path_length(graph, source=ePoints[0], target=ePoints[1])
+            # dijkstra can throw if now path, but we are sure we have a path
+            # store maximum
+            if (sL > maxLength):
+                maxPath = ePoints
+                maxLength = sL
+        if maxPath is None:
+            raise ValueError("No path found!")
+        return nx.dijkstra_path(graph, source=maxPath[0], target=maxPath[1]), maxLength
+
+    def filter_graphs(self, graphs):
+        # filter graphs (remove branches)
+        for i, g in enumerate(graphs):
+            # endNodes = self.getEndNodes(g)
+            # merge the nodes between endNodes
+            merged_graph = self.mergeEdges(g)
+            merged_endNodes = self.getEndNodes(merged_graph)
+            # compute the largest path for each sub graph
+            longestPathNodes = self.getLongestPath(merged_graph, merged_endNodes)
+            longestPathEdges = [(longestPathNodes[0][j], longestPathNodes[0][j + 1]) for j in
+                                range(0, len(longestPathNodes[0]) - 1)]
+            # extract only the graph with the longest path
+            filtered_graph = nx.Graph()
+            for e in longestPathEdges:
+                filtered_graph.add_node(e[0])
+                list_nodes = [self.Vertex([point[0], point[1], point[2]]) for point in
+                              merged_graph[e[0]][e[1]]["object"].pixels]
+                filtered_graph.add_nodes_from(list_nodes)
+                filtered_graph.add_node(e[1])
+        return filtered_graph
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            image = input_features[input_key]
+            bb_parameters = compute_bounding_box(image)
+            cropped_image = image[bb_parameters[0]:bb_parameters[1],
+                            bb_parameters[2]:bb_parameters[3],
+                            bb_parameters[4]:bb_parameters[5]]
+            skelet = skimage.morphology.skeletonize_3d(cropped_image)
+            skelet[skelet > 0] = 1
+            skelet[skelet != 1] = 0
+            graphs, imgB = self.buildTree(img=skelet, start=None)
+            filtered_graph = self.filter_graphs(graphs)
+            filtered_skelet = np.zeros_like(skelet)
+            indices = np.transpose(np.array([n.point for n in list(nx.nodes(filtered_graph))]))
+            filtered_skelet[tuple(indices)] = 1
+            skelet_image = np.zeros_like(image)
+            skelet_image[bb_parameters[0]:bb_parameters[1],
+            bb_parameters[2]:bb_parameters[3],
+            bb_parameters[4]:bb_parameters[5]] = filtered_skelet
+            input_features[output_key] = skelet_image
+        return input_features
+
+class CenterlineImageToPolydata(Processor):
+    def __init__(self, input_keys=('fixed_centerline', 'moving_centerline',),
+                 output_keys=('fpoly_centerline', 'mpoly_centerline',)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+        self.nbsplinepts = 100
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            centerline_img = input_features[input_key]
+            new_points = numpy_support.numpy_to_vtk(np.transpose(np.array(np.where(centerline_img))))
+            vtkPts = vtk.vtkPoints()
+            vtkPts.SetData(new_points)
+            polydata = vtk.vtkPolyData()
+            polydata.SetPoints(vtkPts)
+            # lines = vtk.vtkCellArray()
+            # for pts in range(vtkPts.GetNumberOfPoints()-1):
+            #     line = vtk.vtkLine()
+            #     line.GetPointIds().SetId(0, pts)
+            #     line.GetPointIds().SetId(0, pts+1)
+            #     lines.InsertNextCell(line)
+            # polydata.SetLines(lines)
+            #
+            # clean_polydata = vtk.vtkCleanPolyData()
+            # clean_polydata.SetInputData(polydata)
+            # clean_polydata.Update()
+
+            xspline = vtk.vtkKochanekSpline()
+            yspline = vtk.vtkKochanekSpline()
+            zspline = vtk.vtkKochanekSpline()
+
+            spline = vtk.vtkParametricSpline()
+            spline.SetXSpline(xspline)
+            spline.SetYSpline(yspline)
+            spline.SetZSpline(zspline)
+            spline.SetPoints(polydata.GetPoints())
+
+            function_source = vtk.vtkParametricFunctionSource()
+            function_source.SetParametricFunction(spline)
+            function_source.SetUResolution(self.nbsplinepts)
+            function_source.SetVResolution(self.nbsplinepts)
+            function_source.SetWResolution(self.nbsplinepts)
+            function_source.Update()
+            input_features[output_key] = function_source.GetOutput()

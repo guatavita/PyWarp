@@ -94,7 +94,8 @@ def compute_multi_organs():
                  use_scalar=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
-        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), deformed_keys=('bt_poly', 'ft_poly',), paired=False),
+        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
+                             post_process_keys=('bt_poly', 'ft_poly',), paired=False),
         ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
                   post_process_keys=('xpoly', 'ypoly')),
         ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
@@ -130,6 +131,10 @@ def compute_tubular():
                           output_keys=('fpoly_rectum', 'mpoly_rectum')),
         SITKToNumpy(input_keys=('fixed_rectum', 'moving_rectum'),
                     output_keys=('fixed_rectum', 'moving_rectum')),
+        ExtractCenterline(input_keys=('fixed_rectum', 'moving_rectum',),
+                          output_keys=('fixed_centerline', 'moving_centerline',)),
+        CenterlineImageToPolydata(input_keys=('fixed_centerline', 'moving_centerline',),
+                          output_keys=('fpoly_centerline', 'mpoly_centerline',)),
         ACVDResampling(input_keys=('fpoly_rectum', 'mpoly_rectum'),
                        output_keys=('xpoly', 'ypoly'),
                        np_points=(750, 750,)),
@@ -144,7 +149,7 @@ def compute_tubular():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, nbiter=10, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, T_init=0.5, nbiter=10, passband=[0.01, 0.1, 1])
     )
 
     # build model
