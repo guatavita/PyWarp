@@ -26,7 +26,7 @@ from queue import *
 import collections
 import networkx as nx
 
-from IOTools.IOTools import DataConverter
+from IOTools.IOTools import DataConverter, PolydataReaderWriter
 from PlotVTK.PlotVTK import plot_vtk
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 
@@ -712,28 +712,24 @@ class CenterlineImageToPolydata(Processor):
             vtkPts.SetData(new_points)
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(vtkPts)
-            # lines = vtk.vtkCellArray()
+            lines = vtk.vtkCellArray()
             # for pts in range(vtkPts.GetNumberOfPoints()-1):
             #     line = vtk.vtkLine()
             #     line.GetPointIds().SetId(0, pts)
-            #     line.GetPointIds().SetId(0, pts+1)
+            #     line.GetPointIds().SetId(1, pts+1)
             #     lines.InsertNextCell(line)
             # polydata.SetLines(lines)
-            #
-            # clean_polydata = vtk.vtkCleanPolyData()
-            # clean_polydata.SetInputData(polydata)
-            # clean_polydata.Update()
-
+            clean_polydata = vtk.vtkCleanPolyData()
+            clean_polydata.SetInputData(polydata)
+            clean_polydata.Update()
             xspline = vtk.vtkKochanekSpline()
             yspline = vtk.vtkKochanekSpline()
             zspline = vtk.vtkKochanekSpline()
-
             spline = vtk.vtkParametricSpline()
             spline.SetXSpline(xspline)
             spline.SetYSpline(yspline)
             spline.SetZSpline(zspline)
-            spline.SetPoints(polydata.GetPoints())
-
+            spline.SetPoints(clean_polydata.GetOutput().GetPoints())
             function_source = vtk.vtkParametricFunctionSource()
             function_source.SetParametricFunction(spline)
             function_source.SetUResolution(self.nbsplinepts)
@@ -741,3 +737,8 @@ class CenterlineImageToPolydata(Processor):
             function_source.SetWResolution(self.nbsplinepts)
             function_source.Update()
             input_features[output_key] = function_source.GetOutput()
+            writer = PolydataReaderWriter(filepath=r'C:\Data\Data_test\test_centerline.vtk', polydata=function_source.GetOutput())
+            writer.export_data()
+            writer = PolydataReaderWriter(filepath=r'C:\Data\Data_test\test_centerline_pts.vtk', polydata=polydata)
+            writer.export_data()
+            xxx = 1
