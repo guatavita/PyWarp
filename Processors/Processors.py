@@ -14,6 +14,8 @@ from vtk.util import numpy_support
 import pyvista as pv
 import pyacvd
 
+from skimage import morphology, measure
+
 from IOTools.IOTools import DataConverter
 from PlotVTK.PlotVTK import plot_vtk
 
@@ -26,6 +28,25 @@ def _check_keys_(input_features, keys):
     else:
         assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
                                               '{} was not found'.format(keys)
+
+
+def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
+    # this is faster than using sitk binary morphology filters (dilate, erode, opening, closing)
+    if len(input_img.shape) == 2:
+        struct = morphology.disk(radius)
+    elif len(input_img.shape) == 3:
+        struct = morphology.ball(radius)
+    else:
+        raise ValueError("Dim {} for morphology structure element not supported".format(len(input_img.shape)))
+
+    if morph_type == 'closing':
+        input_img = binary_closing(input_img, structure=struct)
+    elif morph_type == 'opening':
+        input_img = binary_opening(input_img, structure=struct)
+    else:
+        raise ValueError("Type {} is not supported".format(morph_type))
+
+    return input_img
 
 
 def get_polydata_centroid(polydata):
@@ -317,16 +338,45 @@ class DistanceBasedMetrics(Processor):
             # compute distances in both directions and return average
             distances1 = np.sort(np.min(kernel, axis=-1))
             distances2 = np.sort(np.min(kernel, axis=0))
-            dta_metric = (np.mean(distances1) + np.mean(distances2))/2
-            # TODO Double check HD distance
-            hd_metric = (distances1[-1]+distances2[-1])/2
-            hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))])/2
+            dta_metric = (np.mean(distances1) + np.mean(distances2)) / 2
+            hd_metric = (distances1[-1] + distances2[-1]) / 2
+            hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))]) / 2
         return dta_metric, hd_metric, hd_95th_metric
 
-
     def post_process(self, input_features):
+        _check_keys_(input_features, self.reference_keys + self.deformed_keys)
         for reference_key, deformed_key in zip(self.reference_keys, self.deformed_keys):
             dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
                                                                                   input_features[deformed_key],
                                                                                   paired=self.paired)
-            print("DTA: {}, HD: {}, HD95th: {}".format(dta_metric, hd_metric, hd_95th_metric))
+            input_features["{}_{}_dta".format(reference_key, deformed_key)] = dta_metric
+            input_features["{}_{}_hd".format(reference_key, deformed_key)] = hd_metric
+            input_features["{}_{}_hd95th".format(reference_key, deformed_key)] = hd_95th_metric
+
+
+class SimplifyMask(Processor):
+    def __init__(self, input_keys=('mask1', 'mask2'), output_keys=('mask1', 'mask2'), type_keys=('closing', 'closing'),
+                 radius_keys=(1, 1)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+        self.type_keys = type_keys
+        self.radius_keys = radius_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key, type_key, radius_key in zip(self.input_keys, self.output_keys, self.type_keys,
+                                                               self.radius_keys):
+            image = input_features[input_key]
+            if not isinstance(image, np.ndarray):
+                spacing = image.GetSpacing()
+                origin = image.GetOrigin()
+                direction = image.GetDirection()
+                mask = compute_binary_morphology(sitk.GetArrayFromImage(image), radius_key, type_key)
+                image = sitk.GetImageFromArray(mask)
+                image.SetSpacing(spacing)
+                image.SetOrigin(origin)
+                image.SetDirection(direction)
+                input_features[input_key] = image
+            else:
+                input_features[input_key] = compute_binary_morphology(image, radius_key, type_key)
+        return input_features
