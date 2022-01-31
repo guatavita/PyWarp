@@ -91,7 +91,7 @@ class DataConverter(object):
     def __init__(self, polydata=None, image=None, nb_points=None, spacing=None, inval=1, outval=0, cast_float32=True):
         self.polydata = polydata
         self.spacing = spacing if spacing else (1.0, 1.0, 1.0)
-        if image:
+        if image is not None:
             self.image = image
             self.numpy_array = sitk.GetArrayFromImage(image)
             self.size = list(image.GetSize())

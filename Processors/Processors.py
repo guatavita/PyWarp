@@ -14,10 +14,16 @@ from vtk.util import numpy_support
 import pyvista as pv
 import pyacvd
 
-from skimage import morphology, measure
+from skimage import morphology
+from scipy.ndimage import binary_opening, binary_closing
+
+from threading import Thread
+from multiprocessing import cpu_count
+from queue import *
 
 from IOTools.IOTools import DataConverter
 from PlotVTK.PlotVTK import plot_vtk
+from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 
 
 def _check_keys_(input_features, keys):
@@ -356,27 +362,59 @@ class DistanceBasedMetrics(Processor):
 
 class SimplifyMask(Processor):
     def __init__(self, input_keys=('mask1', 'mask2'), output_keys=('mask1', 'mask2'), type_keys=('closing', 'closing'),
-                 radius_keys=(1, 1)):
+                 radius_keys=(1, 1), thread_count=8):
         self.input_keys = input_keys
         self.output_keys = output_keys
         self.type_keys = type_keys
         self.radius_keys = radius_keys
+        self.thread_count = thread_count
+
+    def worker_def(self, A):
+        q = A
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            else:
+                iteration, input_features, input_key, output_key, type_key, radius_key = item
+                try:
+                    image = input_features[input_key]
+                    if not isinstance(image, np.ndarray):
+                        spacing = image.GetSpacing()
+                        origin = image.GetOrigin()
+                        direction = image.GetDirection()
+                        mask = compute_binary_morphology(sitk.GetArrayFromImage(image), radius_key, type_key)
+                        image = sitk.GetImageFromArray(mask.astype(np.int8))
+                        image.SetSpacing(spacing)
+                        image.SetOrigin(origin)
+                        image.SetDirection(direction)
+                        input_features[output_key] = image
+                    else:
+                        input_features[output_key] = compute_binary_morphology(image, radius_key, type_key).astype(np.int8)
+                except:
+                    print('failed on class {}, '.format(iteration))
+                q.task_done()
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
+
+        # init threads
+        q = Queue(maxsize=self.thread_count)
+        threads = []
+        for worker in range(self.thread_count):
+            t = Thread(target=self.worker_def, args=(q,))
+            t.start()
+            threads.append(t)
+
+        iteration = 1
         for input_key, output_key, type_key, radius_key in zip(self.input_keys, self.output_keys, self.type_keys,
                                                                self.radius_keys):
-            image = input_features[input_key]
-            if not isinstance(image, np.ndarray):
-                spacing = image.GetSpacing()
-                origin = image.GetOrigin()
-                direction = image.GetDirection()
-                mask = compute_binary_morphology(sitk.GetArrayFromImage(image), radius_key, type_key)
-                image = sitk.GetImageFromArray(mask)
-                image.SetSpacing(spacing)
-                image.SetOrigin(origin)
-                image.SetDirection(direction)
-                input_features[input_key] = image
-            else:
-                input_features[input_key] = compute_binary_morphology(image, radius_key, type_key)
+            item = [iteration, input_features, input_key, output_key, type_key, radius_key]
+            iteration += 1
+            q.put(item)
+
+        for i in range(self.thread_count):
+            q.put(None)
+        for t in threads:
+            t.join()
         return input_features

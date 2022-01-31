@@ -409,6 +409,4 @@ class STPSRPM(CostFunction):
                     virtual_xpoly = self.warp_QR(xpoly_res, self.K_ft, self.d_ft, self.c_ft)
                     virtual_ypoly = self.warp_QR(ypoly_res, self.K_bt, self.d_bt, self.c_bt)
                 self.T *= self.anneal_rate
-
-        # TODO CompMeanDist(ypoly, virtual_xpoly);
         return virtual_xpoly, virtual_ypoly

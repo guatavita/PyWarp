@@ -11,9 +11,6 @@ from IOTools.IOTools import *
 from Processors.Processors import *
 from CostFunctions.CostFunctions import *
 
-from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
-from PlotVTK.PlotVTK import plot_vtk
-
 
 class BuildModel(object):
     def __init__(self, dataloader=DataReaderWriter):
@@ -70,12 +67,18 @@ def main():
         'moving_rectum_path': r'C:\Data\Data_test\Rectum_ext_1.nii.gz',
     }
     deformable_model.set_processors([
+        GetSITKInfo(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
+                                'moving_bladder', 'moving_prostate', 'moving_rectum')),
+        SimplifyMask(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
+                                 'moving_bladder', 'moving_prostate', 'moving_rectum'),
+                     output_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
+                                  'moving_bladder', 'moving_prostate', 'moving_rectum'),
+                     type_keys=('opening', 'opening', 'opening', 'opening', 'opening', 'opening',),
+                     radius_keys=(2, 2, 2, 2, 2, 2,)),
         ConvertMaskToPoly(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
                                       'moving_bladder', 'moving_prostate', 'moving_rectum'),
                           output_keys=('fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum',
                                        'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum')),
-        GetSITKInfo(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
-                                'moving_bladder', 'moving_prostate', 'moving_rectum')),
         SITKToNumpy(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
                                 'moving_bladder', 'moving_prostate', 'moving_rectum'),
                     output_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
@@ -84,9 +87,11 @@ def main():
                                    'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
                        output_keys=('fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum',
                                     'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
-                       np_points=(750, 500, 750, 750, 500, 750,)),
-        JoinPoly(input_key_list=['fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum'], output_key='xpoly', use_scalar=True),
-        JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly', use_scalar=True),
+                       np_points=(2000, 2000, 2000, 2000, 2000, 2000,)),
+        JoinPoly(input_key_list=['fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum'], output_key='xpoly',
+                 use_scalar=True),
+        JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly',
+                 use_scalar=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), deformed_keys=('bt_poly', 'ft_poly',), paired=False),
