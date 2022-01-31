@@ -344,6 +344,7 @@ class DistanceBasedMetrics(Processor):
                 temp1 = np.tile(reference[:, i], (N, 1))
                 temp2 = np.transpose(np.tile(moving[:, i], (M, 1)))
                 kernel = kernel + np.square(temp1 - temp2)
+            kernel = np.sqrt(kernel)
             # compute distances in both directions and return average
             distances1 = np.sort(np.min(kernel, axis=-1))
             distances2 = np.sort(np.min(kernel, axis=0))
