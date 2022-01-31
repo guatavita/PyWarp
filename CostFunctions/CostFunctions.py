@@ -35,10 +35,9 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-# TODO ADD documentation for each function
+# TODO add support for multiparametric scalar (for example, label + topology)
 # TODO add a costfunction merger to compute 2 cost functions (stpsrpm and DMR) and merge them with a lambda
-# TODO put the TPS outside?
-# TODO add target mean dist (stop when inf to 1 mm)
+# TODO add target mean dist stop criteria such as % of change from the past 5 iterations
 
 def smooth_polydata(polydata, passband):
     smooth_filter = vtk.vtkWindowedSincPolyDataFilter()
