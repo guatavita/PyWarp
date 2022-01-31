@@ -204,6 +204,18 @@ class STPSRPM(CostFunction):
         self.ycentroid = compute_centroid_af(self.ypoly)
 
     def compute_m(self, virtual_xpoly, virtual_ypoly, use_scalar_vtk=False):
+        '''
+        Compute the soft assignment matrix:
+        . virtual_xpoly - updated source points
+        . ypoly         - target points
+        . m_matrix      - soft assignment matrix
+        . xsize         - number of source points + 1 (outliers) (should be the line)
+        . ysize         - number of target points + 1 (outliers) (should be the column)
+        :param virtual_xpoly:
+        :param virtual_ypoly:
+        :param use_scalar_vtk:
+        :return:
+        '''
         xpoly_dim = self.xpoly.dims()[0]
         ypoly_dim = self.ypoly.dims()[0]
 
@@ -224,6 +236,16 @@ class STPSRPM(CostFunction):
         return m_matrix, m_outliers_row, m_outliers_col
 
     def normalize_it_m(self, m_matrix, m_outliers_row, m_outliers_col):
+        '''
+        Iteratively normalize the rows and columns of the soft assignment matrix:
+        . m_matrix      - soft assignment matrix
+        . xsize         - number of source points + 1 (outliers) (should be the line)
+        . ysize         - number of target points + 1 (outliers) (should be the column)
+        :param m_matrix:
+        :param m_outliers_row:
+        :param m_outliers_col:
+        :return:
+        '''
         norm_threshold = 0.05
         norm_maxit = 10
         norm_it = 0
@@ -249,6 +271,11 @@ class STPSRPM(CostFunction):
             norm_it += 1
 
     def normalize_m(self, m_matrix):
+        '''
+        Normalize the rows the soft assignment matrix:
+        :param m_matrix: soft assignment matrix
+        :return:
+        '''
         ypoly_dim = m_matrix.dims()[1]
         sumx = af.sum(m_matrix, 1)
         m_matrix = m_matrix / af.tile(sumx, 1, ypoly_dim)
@@ -257,11 +284,11 @@ class STPSRPM(CostFunction):
     def threshold_m(self, m_matrix, threshold):
         '''
         threshold the matrix_m according to the value of the sum of each col/row:
+        xsize         - number of source points + 1 (outliers) (should be the line)
+        ysize         - number of target points + 1 (outliers) (should be the column)
         :param m_matrix: soft assignment matrix
         :param threshold:
         :return:
-        xsize         - number of source points + 1 (outliers) (should be the line)
-        ysize         - number of target points + 1 (outliers) (should be the column)
         '''
         sumx = af.sum(m_matrix, 1)
         mask = sumx > threshold
@@ -272,6 +299,12 @@ class STPSRPM(CostFunction):
         return m_matrix
 
     def update_virtual(self, poly, m_matrix):
+        '''
+        Compute virtual_poly
+        :param poly: target points
+        :param m_matrix: soft assignment matrix
+        :return: virtualypoly, transformed target points
+        '''
         pts_dim = poly.dims()[1]
         sumx = af.sum(m_matrix, 1)
         return af.matmul(m_matrix, poly) / af.tile(sumx, 1, pts_dim)
