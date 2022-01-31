@@ -87,7 +87,7 @@ def main():
                                    'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
                        output_keys=('fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum',
                                     'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
-                       np_points=(2000, 2000, 2000, 2000, 2000, 2000,)),
+                       np_points=(750, 500, 750, 750, 500, 750,)),
         JoinPoly(input_key_list=['fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum'], output_key='xpoly',
                  use_scalar=True),
         JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly',
@@ -102,7 +102,7 @@ def main():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=3)
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=3, passband=[0.01, 0.1, 1])
     )
 
     # build model

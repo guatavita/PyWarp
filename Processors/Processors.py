@@ -358,7 +358,7 @@ class DistanceBasedMetrics(Processor):
             input_features["{}_{}_dta".format(reference_key, deformed_key)] = dta_metric
             input_features["{}_{}_hd".format(reference_key, deformed_key)] = hd_metric
             input_features["{}_{}_hd95th".format(reference_key, deformed_key)] = hd_95th_metric
-
+        return input_features
 
 class SimplifyMask(Processor):
     def __init__(self, input_keys=('mask1', 'mask2'), output_keys=('mask1', 'mask2'), type_keys=('closing', 'closing'),

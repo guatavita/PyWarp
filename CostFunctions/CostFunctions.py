@@ -39,6 +39,24 @@ def _check_keys_(input_features, keys):
 # TODO add a costfunction merger to compute 2 cost functions (stpsrpm and DMR) and merge them with a lambda
 # TODO put the TPS outside?
 # TODO add target mean dist (stop when inf to 1 mm)
+
+def smooth_polydata(polydata, passband):
+    smooth_filter = vtk.vtkWindowedSincPolyDataFilter()
+    smooth_filter.SetInputData(polydata)
+    # degree of the polynomial that is used to approximate the windowed sinc function
+    smooth_filter.SetNumberOfIterations(20)
+    smooth_filter.BoundarySmoothingOff()
+    # interior vertices are classified as either "simple", "interior edge", or "fixed", and smoothed differently.
+    smooth_filter.FeatureEdgeSmoothingOff()
+    # a feature edge occurs when the angle between the two surface normals of a polygon sharing an edge is greater than the FeatureAngle
+    smooth_filter.SetFeatureAngle(120.0)
+    smooth_filter.SetPassBand(passband)  # lower PassBand values produce more smoothing
+    smooth_filter.NonManifoldSmoothingOn()
+    smooth_filter.NormalizeCoordinatesOn()
+    smooth_filter.Update()
+    return smooth_filter.GetOutput()
+
+
 def convert_vtk_to_af(polydata, force_float32=True, transpose=True):
     points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
     if force_float32:
@@ -119,7 +137,7 @@ class STPSRPM(CostFunction):
         :param use_scalar_vtk: use_scalar_vtk used to cluster group of points using scalar information from the vtk
         :param xlm: vtk pts (landmarks) related to the x shape with same index ordering as lmy (use as constraint in the matrix m)
         :param ylm: vtk pts (landmarks) related to the y shape with same index ordering as lmy (use as constraint in the matrix m)
-        :param passband: passband value for smooth filter (advice: 0.01x0.1x1) (default=1 /eq to no smoothing)
+        :param passband: passband value for smooth filter (advice: [0.01,0.1,1]) (default=1 /eq to no smoothing)
         :param iterative_norm: iterative normalization of the matrix m (default: True)
         :param nbiter: override number of iteration (mostly for quick debug)
         """
@@ -383,18 +401,15 @@ class STPSRPM(CostFunction):
             ypoly_res = self.ypoly.copy()
 
             if self.passband[res] != 1:
-                xxx = 1
-                # ConvertAFtoVTK(xpoly_smooth_vtk, xpoly(seq(lm_size, xpoints - 1), span));
-                # ConvertAFtoVTK(ypoly_smooth_vtk, ypoly(seq(lm_size, ypoints - 1), span));
-                # xpoly_smooth_vtk = smoothPoly(xpoly_smooth_vtk, passband[res]);
-                # ypoly_smooth_vtk = smoothPoly(ypoly_smooth_vtk, passband[res]);
-                #
-                # ConvertVTKtoAF(xpoly_smooth_vtk, xpoly_res);
-                # ConvertVTKtoAF(ypoly_smooth_vtk, ypoly_res);
-                # if (lm_flag) {
-                #     xpoly_res = join(0, xlm, xpoly_res);
-                #     ypoly_res = join(0, ylm, ypoly_res);
-                # }
+                xpoly_smooth_vtk = convert_af_to_vtk(self.xpoly_vtk, self.xpoly[self.lm_size:self.xpoints, :])
+                ypoly_smooth_vtk = convert_af_to_vtk(self.ypoly_vtk, self.ypoly[self.lm_size:self.ypoints, :])
+                xpoly_smooth_vtk = smooth_polydata(xpoly_smooth_vtk, self.passband[res])
+                ypoly_smooth_vtk = smooth_polydata(ypoly_smooth_vtk, self.passband[res])
+                xpoly_res = convert_vtk_to_af(xpoly_smooth_vtk)
+                ypoly_res = convert_vtk_to_af(ypoly_smooth_vtk)
+                if self.xlm_vtk and self.ylm_vtk:
+                    xpoly_res = af.join(0, self.xlm, xpoly_res)
+                    ypoly_res = af.join(0, self.ylm, ypoly_res)
 
             if res == 0:
                 virtual_xpoly = xpoly_res.copy()
@@ -408,12 +423,11 @@ class STPSRPM(CostFunction):
                 for i in range(self.perT_maxit):
                     m_matrix, m_outliers_row, m_outliers_col = self.compute_m(virtual_xpoly, virtual_ypoly,
                                                                               use_scalar_vtk=self.use_scalar_vtk)
-                    # if (lm_flag) {
-                    #     m_matrix(seq(lm_size), span) = af::identity(lm_size, ypoints);
-                    #     m_matrix(span, seq(lm_size)) = af::identity(xpoints, lm_size);
-                    #     m_outliers_row(seq(lm_size)) = 0;
-                    #     m_outliers_col(seq(lm_size)) = 0;
-                    # }
+                    if self.xlm_vtk and self.ylm_vtk:
+                        m_matrix[0:self.lm_size, :] = af.identity(self.lm_size, self.ypoints)
+                        m_matrix[:, 0:self.lm_size] = af.identity(self.xpoints, self.lm_size)
+                        m_outliers_row[0:self.lm_size] = 0
+                        m_outliers_col[0:self.lm_size] = 0
 
                     # check if nan or + / -inf in the m_matrix (bad mapping)
                     if af.sum(af.isnan(m_matrix) + af.isinf(m_matrix)) > 1:
