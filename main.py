@@ -55,7 +55,7 @@ class BuildModel(object):
         return input_features
 
 
-def main():
+def compute_multi_organs():
     # define model
     deformable_model = BuildModel(dataloader=ImageReaderWriter)
     input_features = {
@@ -102,7 +102,49 @@ def main():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, nbiter=3, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, passband=[0.01, 0.1, 1])
+    )
+
+    # build model
+    deformable_model.load_data(input_features)
+    deformable_model.pre_process(input_features)
+    deformable_model.run_cost_function(input_features)
+    deformable_model.post_process(input_features)
+    plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
+
+
+def compute_tubular():
+    # define model
+    deformable_model = BuildModel(dataloader=ImageReaderWriter)
+    input_features = {
+        'fixed_rectum_path': r'C:\Data\Data_test\Rectum_ext_0.nii.gz',
+        'moving_rectum_path': r'C:\Data\Data_test\Rectum_ext_1.nii.gz',
+    }
+    deformable_model.set_processors([
+        GetSITKInfo(input_keys=('fixed_rectum', 'moving_rectum')),
+        SimplifyMask(input_keys=('fixed_rectum', 'moving_rectum'),
+                     output_keys=('fixed_rectum', 'moving_rectum'),
+                     type_keys=('opening', 'opening',),
+                     radius_keys=(2, 2,)),
+        ConvertMaskToPoly(input_keys=('fixed_rectum', 'moving_rectum'),
+                          output_keys=('fpoly_rectum', 'mpoly_rectum')),
+        SITKToNumpy(input_keys=('fixed_rectum', 'moving_rectum'),
+                    output_keys=('fixed_rectum', 'moving_rectum')),
+        ACVDResampling(input_keys=('fpoly_rectum', 'mpoly_rectum'),
+                       output_keys=('xpoly', 'ypoly'),
+                       np_points=(750, 750,)),
+        CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
+                  output_keys=('ft_dvf', 'bt_dvf',)),
+        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
+                             post_process_keys=('bt_poly', 'ft_poly',), paired=False),
+        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
+                  post_process_keys=('xpoly', 'ypoly')),
+        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
+        CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
+                output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
+    ])
+    deformable_model.set_cost_functions(
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -116,4 +158,5 @@ def main():
 # TODO finite element model using unstructured structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
-    main()
+    # compute_multi_organs()
+    compute_multi_organs()

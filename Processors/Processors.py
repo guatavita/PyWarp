@@ -314,14 +314,17 @@ class JoinPoly(Processor):
 
 
 class DistanceBasedMetrics(Processor):
-    def __init__(self, reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',), paired=False):
+    def __init__(self, reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
+                 post_process_keys=('bt_poly', 'ft_poly',), paired=False):
         '''
         :param reference_keys:
-        :param deformed_keys:
+        :param pre_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
+        :param post_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
         :param paired: bool if points from the reference and moving mesh have the same index (order)
         '''
         self.reference_keys = reference_keys
-        self.deformed_keys = deformed_keys
+        self.pre_process_keys = pre_process_keys
+        self.post_process_keys = post_process_keys
         self.paired = paired
 
     def compute_distance_metrics(self, reference, moving, paired=False):
@@ -349,16 +352,28 @@ class DistanceBasedMetrics(Processor):
             hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))]) / 2
         return dta_metric, hd_metric, hd_95th_metric
 
-    def post_process(self, input_features):
-        _check_keys_(input_features, self.reference_keys + self.deformed_keys)
-        for reference_key, deformed_key in zip(self.reference_keys, self.deformed_keys):
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.reference_keys + self.pre_process_keys)
+        for reference_key, pre_process_key in zip(self.reference_keys, self.pre_process_keys):
             dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
-                                                                                  input_features[deformed_key],
+                                                                                  input_features[pre_process_key],
                                                                                   paired=self.paired)
-            input_features["{}_{}_dta".format(reference_key, deformed_key)] = dta_metric
-            input_features["{}_{}_hd".format(reference_key, deformed_key)] = hd_metric
-            input_features["{}_{}_hd95th".format(reference_key, deformed_key)] = hd_95th_metric
+            input_features["{}_{}_dta".format(reference_key, pre_process_key)] = dta_metric
+            input_features["{}_{}_hd".format(reference_key, pre_process_key)] = hd_metric
+            input_features["{}_{}_hd95th".format(reference_key, pre_process_key)] = hd_95th_metric
         return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features, self.reference_keys + self.post_process_keys)
+        for reference_key, post_process_key in zip(self.reference_keys, self.post_process_keys):
+            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
+                                                                                  input_features[post_process_key],
+                                                                                  paired=self.paired)
+            input_features["{}_{}_dta".format(reference_key, post_process_key)] = dta_metric
+            input_features["{}_{}_hd".format(reference_key, post_process_key)] = hd_metric
+            input_features["{}_{}_hd95th".format(reference_key, post_process_key)] = hd_95th_metric
+        return input_features
+
 
 class SimplifyMask(Processor):
     def __init__(self, input_keys=('mask1', 'mask2'), output_keys=('mask1', 'mask2'), type_keys=('closing', 'closing'),
@@ -390,7 +405,8 @@ class SimplifyMask(Processor):
                         image.SetDirection(direction)
                         input_features[output_key] = image
                     else:
-                        input_features[output_key] = compute_binary_morphology(image, radius_key, type_key).astype(np.int8)
+                        input_features[output_key] = compute_binary_morphology(image, radius_key, type_key).astype(
+                            np.int8)
                 except:
                     print('failed on class {}, '.format(iteration))
                 q.task_done()

@@ -85,6 +85,8 @@ def convert_scalars_to_af(scalar, force_float32=True, transpose=True):
 def compute_centroid_af(array):
     return af.sum(array, 0) / array.dims()[0]
 
+def compute_mean_dist(poly, virtual_poly):
+    return af.mean(af.min(af.sqrt(compute_kernel_2(virtual_poly, poly)), 0))
 
 def compute_kernel(array):
     if not len(array.dims()) > 1:
@@ -159,6 +161,9 @@ class STPSRPM(CostFunction):
         self.T = T_init
         self.anneal_rate = anneal_rate
         self.nbiter = nbiter
+        # self.metric_watcher = []
+        # self.metric_threshold = 0.05
+        # self.watcher_size = 5
         if not self.nbiter:
             self.nbiter = round(math.log(T_final / T_init) / math.log(anneal_rate))
 
@@ -417,7 +422,7 @@ class STPSRPM(CostFunction):
             for it in range(math.floor(self.nbiter / len(self.passband))):
                 lambda1 = self.lambda1_init * self.xpoints * self.T
                 lambda2 = self.lambda2_init * self.xpoints * self.T
-                print("res: {}, iter: {}, T: {}, lambda1: {}, lambda2: {}".format(res, it, self.T, lambda1, lambda2))
+                print("res: {}, iter: {}, T: {:5.4f}, lambda1: {:5.2f}, lambda2: {:5.2f}".format(res, it, self.T, lambda1, lambda2))
 
                 for i in range(self.perT_maxit):
                     m_matrix, m_outliers_row, m_outliers_col = self.compute_m(virtual_xpoly, virtual_ypoly,
@@ -454,5 +459,17 @@ class STPSRPM(CostFunction):
 
                     virtual_xpoly = self.warp_QR(xpoly_res, self.K_ft, self.d_ft, self.c_ft)
                     virtual_ypoly = self.warp_QR(ypoly_res, self.K_bt, self.d_bt, self.c_bt)
+
+                # monitor distance to agreement between the meshes
+                # compute average change over the last 5 iterations
+                xdta = compute_mean_dist(self.ypoly, virtual_xpoly)
+                ydta = compute_mean_dist(self.xpoly, virtual_ypoly)
+                print("     DTA, forward: {:5.4f}, backward: {:5.4f}".format(xdta, ydta))
+                # self.metric_watcher.append((xdta+ydta)/2)
+                # if len(self.metric_watcher) == self.watcher_size:
+                #     avg_metric = sum(self.metric_watcher) / len(self.metric_watcher)
+                #     avg_diff = np.sqrt(np.sum(np.square(np.array(self.metric_watcher)-avg_metric))/self.watcher_size)
+                #     print("     CONV: {:7.6f}".format(avg_diff))
+                #     del self.metric_watcher[0]
                 self.T *= self.anneal_rate
         return virtual_xpoly, virtual_ypoly
