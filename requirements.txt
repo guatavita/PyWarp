@@ -11,4 +11,4 @@ PlotScrollNumpyArrays
 vtk
 pyvista
 pyacvd
-arrayfire==3.6.20181017
+arrayfire

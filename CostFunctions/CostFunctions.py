@@ -17,8 +17,8 @@ from PlotVTK.PlotVTK import plot_vtk
 backends = af.get_available_backends()
 if 'cuda' in backends:
     af.set_backend('cuda')
-# elif 'opencl' in backends:
-#     af.set_backend('opencl')
+elif 'opencl' in backends:
+    af.set_backend('opencl')
 else:
     af.set_backend('cpu')
 
@@ -61,7 +61,10 @@ def convert_vtk_to_af(polydata, force_float32=True, transpose=True):
     if force_float32:
         points = points.astype(dtype=np.float32)
     af_array = af.Array(points.ctypes.data, points.shape[::-1], points.dtype.char)
-    return af_array if not transpose else af.transpose(af_array)
+    if transpose:
+        af_array = af.transpose(af_array)
+    af.eval(af_array)
+    return af_array
 
 
 def convert_af_to_vtk(template, array):
@@ -79,14 +82,21 @@ def convert_scalars_to_af(scalar, force_float32=True, transpose=True):
     if len(scalars.shape) == 1:
         scalars = scalars[..., None]
     af_array = af.Array(scalars.ctypes.data, scalars.shape[::-1], scalars.dtype.char)
-    return af_array if not transpose else af.transpose(af_array)
+    if transpose:
+        af_array = af.transpose(af_array)
+    af.eval(af_array)
+    return af_array
 
 
 def compute_centroid_af(array):
-    return af.sum(array, 0) / array.dims()[0]
+    centroid = af.sum(array, 0) / array.dims()[0]
+    af.eval(centroid)
+    return centroid
+
 
 def compute_mean_dist(poly, virtual_poly):
     return af.mean(af.min(af.sqrt(compute_kernel_2(virtual_poly, poly)), 0))
+
 
 def compute_kernel(array):
     if not len(array.dims()) > 1:
@@ -97,7 +107,10 @@ def compute_kernel(array):
     for i in range(D):
         temp1 = af.tile(array[:, i], 1, N)
         temp2 = af.tile(af.transpose(array[:, i]), N, 1)
+        af.eval(temp1)
+        af.eval(temp2)
         kernel = kernel + af.pow(temp1 - temp2, 2)
+        af.eval(kernel)
     return kernel
 
 
@@ -113,7 +126,10 @@ def compute_kernel_2(array1, array2):
     for i in range(D):
         temp1 = af.tile(array1[:, i], 1, N)
         temp2 = af.tile(af.transpose(array2[:, i]), M, 1)
+        af.eval(temp1)
+        af.eval(temp2)
         kernel = kernel + af.pow(temp1 - temp2, 2)
+        af.eval(kernel)
     return kernel
 
 
@@ -248,18 +264,21 @@ class STPSRPM(CostFunction):
 
         if use_scalar_vtk:
             scalar_dist = compute_kernel_2(self.xscalar, self.yscalar)
-            m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T) - scalar_dist / self.T)
+            self.m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T) - scalar_dist / self.T)
         else:
-            m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T))
-        m_outliers_row = (1 / self.T_init) * af.exp(-(
+            self.m_matrix = (1 / self.T) * af.exp(-(ft_dist + bt_dist) / (4 * self.T))
+        self.m_outliers_row = (1 / self.T_init) * af.exp(-(
                 af.sum(af.pow(virtual_ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1) + af.sum(
             af.pow(self.ypoly - af.tile(self.ycentroid, ypoly_dim, 1), 2), 1)) / (4 * self.T_init))
-        m_outliers_col = (1 / self.T_init) * af.exp(-(
+        self.m_outliers_col = (1 / self.T_init) * af.exp(-(
                 af.sum(af.pow(virtual_xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1) + af.sum(
             af.pow(self.xpoly - af.tile(self.xcentroid, xpoly_dim, 1), 2), 1)) / (4 * self.T_init))
-        return m_matrix, m_outliers_row, m_outliers_col
 
-    def normalize_it_m(self, m_matrix, m_outliers_row, m_outliers_col):
+        af.eval(self.m_matrix)
+        af.eval(self.m_outliers_row)
+        af.eval(self.m_outliers_col)
+
+    def normalize_it_m(self):
         '''
         Iteratively normalize the rows and columns of the soft assignment matrix:
         . m_matrix      - soft assignment matrix
@@ -273,39 +292,46 @@ class STPSRPM(CostFunction):
         norm_threshold = 0.05
         norm_maxit = 10
         norm_it = 0
-        xpoly_dim = m_matrix.dims()[0]
-        ypoly_dim = m_matrix.dims()[1]
+        xpoly_dim = self.m_matrix.dims()[0]
+        ypoly_dim = self.m_matrix.dims()[1]
 
         while True:
             # --- Row normalization - -------------------------------------------
-            sumx = af.sum(m_matrix, 1) + m_outliers_col
-            m_matrix = m_matrix / af.tile(sumx, 1, ypoly_dim)
-            m_outliers_col = m_outliers_col / sumx
+            sumx = af.sum(self.m_matrix, 1) + self.m_outliers_col
+            self.m_matrix = self.m_matrix / af.tile(sumx, 1, ypoly_dim)
+            self.m_outliers_col = self.m_outliers_col / sumx
 
             # --- Column normalization - ----------------------------------------
-            sumy = af.sum(m_matrix, 0) + af.transpose(m_outliers_row)
-            m_matrix = m_matrix / af.tile(sumy, xpoly_dim, 1)
-            m_outliers_row = m_outliers_row / af.transpose(sumy)
+            sumy = af.sum(self.m_matrix, 0) + af.transpose(self.m_outliers_row)
+            self.m_matrix = self.m_matrix / af.tile(sumy, xpoly_dim, 1)
+            self.m_outliers_row = self.m_outliers_row / af.transpose(sumy)
             err = (af.matmul(sumx - 1, sumx - 1, af.MATPROP.TRANS) + af.matmul(sumy - 1, sumy - 1, af.MATPROP.NONE,
                                                                                af.MATPROP.TRANS)) / (
                           xpoly_dim + ypoly_dim)
 
+            af.eval(sumy)
+            af.eval(sumx)
+            af.eval(self.m_matrix)
+            af.eval(self.m_outliers_col)
+            af.eval(self.m_outliers_row)
+            af.eval(err)
+
             if err[0, 0].scalar() < norm_threshold or norm_it >= norm_maxit:
-                return m_matrix, m_outliers_row, m_outliers_col
+                return
             norm_it += 1
 
-    def normalize_m(self, m_matrix):
+    def normalize_m(self):
         '''
         Normalize the rows the soft assignment matrix:
         :param m_matrix: soft assignment matrix
         :return:
         '''
-        ypoly_dim = m_matrix.dims()[1]
-        sumx = af.sum(m_matrix, 1)
-        m_matrix = m_matrix / af.tile(sumx, 1, ypoly_dim)
-        return m_matrix
+        ypoly_dim = self.m_matrix.dims()[1]
+        sumx = af.sum(self.m_matrix, 1)
+        self.m_matrix = self.m_matrix / af.tile(sumx, 1, ypoly_dim)
+        af.eval(self.m_matrix)
 
-    def threshold_m(self, m_matrix, threshold):
+    def threshold_m(self, threshold):
         '''
         threshold the matrix_m according to the value of the sum of each col/row:
         xsize         - number of source points + 1 (outliers) (should be the line)
@@ -314,13 +340,13 @@ class STPSRPM(CostFunction):
         :param threshold:
         :return:
         '''
-        sumx = af.sum(m_matrix, 1)
+        sumx = af.sum(self.m_matrix, 1)
         mask = sumx > threshold
-        m_matrix = m_matrix * af.tile(mask, 1, m_matrix.dims()[1])
-        sumy = af.sum(m_matrix, 0)
+        self.m_matrix = self.m_matrix * af.tile(mask, 1, self.m_matrix.dims()[1])
+        sumy = af.sum(self.m_matrix, 0)
         mask = sumy > threshold
-        m_matrix = m_matrix * af.tile(mask, m_matrix.dims()[0], 1)
-        return m_matrix
+        self.m_matrix = self.m_matrix * af.tile(mask, self.m_matrix.dims()[0], 1)
+        af.eval(self.m_matrix)
 
     def update_virtual(self, poly, m_matrix):
         '''
@@ -331,7 +357,10 @@ class STPSRPM(CostFunction):
         '''
         pts_dim = poly.dims()[1]
         sumx = af.sum(m_matrix, 1)
-        return af.matmul(m_matrix, poly) / af.tile(sumx, 1, pts_dim)
+        af.eval(sumx)
+        virtual_poly = af.matmul(m_matrix, poly) / af.tile(sumx, 1, pts_dim)
+        af.eval(virtual_poly)
+        return virtual_poly
 
     def computeTPS_QR(self, poly, virtual_poly, lambda1, lambda2, sigma=1):
         '''
@@ -351,15 +380,20 @@ class STPSRPM(CostFunction):
         D = poly.dims()[1]
         ones = af.constant(1, N, dtype=f32)
 
+        dist = compute_kernel(poly)
+
         # create kernel
-        K = -af.sqrt(compute_kernel(poly))
+        K = -af.sqrt(dist)
+        af.eval(K)
 
         # QR decomposition
         # create source point array for AF with extra "1" column
         S = af.join(1, ones, poly)
+        af.eval(S)
 
         # create target point array for AF
         T = af.join(1, ones, virtual_poly)
+        af.eval(T)
 
         # create QR matrices in AF (tau is not used)
         q, r, tau = af.qr(S)
@@ -382,6 +416,11 @@ class STPSRPM(CostFunction):
                       af.matmul(af.transpose(R), af.matmul(af.transpose(q1), (T - af.matmul(K, c)))) - af.matmul(R, R,
                                                                                                                  af.MATPROP.TRANS)) + af.identity(
             D + 1, D + 1, dtype=f32)
+
+        af.eval(K)
+        af.eval(c)
+        af.eval(d)
+
         return K, d, c
 
     def warp_QR(self, poly, K, d, c):
@@ -399,6 +438,7 @@ class STPSRPM(CostFunction):
         S = af.join(1, ones, poly)
         output = af.matmul(S, d) + af.matmul(K, c)
         virtual_poly = output[:, 1:]
+        af.eval(virtual_poly)
         return virtual_poly
 
     def update(self):
@@ -424,19 +464,20 @@ class STPSRPM(CostFunction):
             for it in range(math.floor(self.nbiter / len(self.passband))):
                 lambda1 = self.lambda1_init * self.xpoints * self.T
                 lambda2 = self.lambda2_init * self.xpoints * self.T
-                print("res: {}, iter: {}, T: {:5.4f}, lambda1: {:5.2f}, lambda2: {:5.2f}".format(res, it, self.T, lambda1, lambda2))
+                print(
+                    "res: {}, iter: {}, T: {:5.4f}, lambda1: {:5.2f}, lambda2: {:5.2f}".format(res, it, self.T, lambda1,
+                                                                                               lambda2))
 
                 for i in range(self.perT_maxit):
-                    m_matrix, m_outliers_row, m_outliers_col = self.compute_m(virtual_xpoly, virtual_ypoly,
-                                                                              use_scalar_vtk=self.use_scalar_vtk)
+                    self.compute_m(virtual_xpoly, virtual_ypoly, use_scalar_vtk=self.use_scalar_vtk)
                     if self.xlm_vtk and self.ylm_vtk:
-                        m_matrix[0:self.lm_size, :] = af.identity(self.lm_size, self.ypoints)
-                        m_matrix[:, 0:self.lm_size] = af.identity(self.xpoints, self.lm_size)
-                        m_outliers_row[0:self.lm_size] = 0
-                        m_outliers_col[0:self.lm_size] = 0
+                        self.m_matrix[0:self.lm_size, :] = af.identity(self.lm_size, self.ypoints)
+                        self.m_matrix[:, 0:self.lm_size] = af.identity(self.xpoints, self.lm_size)
+                        self.m_outliers_row[0:self.lm_size] = 0
+                        self.m_outliers_col[0:self.lm_size] = 0
 
                     # check if nan or + / -inf in the m_matrix (bad mapping)
-                    if af.sum(af.isnan(m_matrix) + af.isinf(m_matrix)) > 1:
+                    if af.sum(af.isnan(self.m_matrix) + af.isinf(self.m_matrix)) > 1:
                         print("---------------------------------------------")
                         print("    EXIT_FAILURE")
                         print("    NaN or -/+inf were found in the m_matrix")
@@ -445,16 +486,15 @@ class STPSRPM(CostFunction):
                         return virtual_xpoly, virtual_ypoly
 
                     if self.iterative_norm:
-                        m_matrix, m_outliers_row, m_outliers_col = self.normalize_it_m(m_matrix, m_outliers_row,
-                                                                                       m_outliers_col)
+                        self.normalize_it_m()
                     else:
-                        m_matrix = self.normalize_m(m_matrix)
+                        self.normalize_m()
 
                     if self.threshold:
-                        m_matrix = self.threshold_m(m_matrix, self.threshold)
+                        self.threshold_m(self.threshold)
 
-                    virtual_ypoly = self.update_virtual(ypoly_res, m_matrix)
-                    virtual_xpoly = self.update_virtual(xpoly_res, af.transpose(m_matrix))
+                    virtual_ypoly = self.update_virtual(ypoly_res, self.m_matrix)
+                    virtual_xpoly = self.update_virtual(xpoly_res, af.transpose(self.m_matrix))
 
                     self.K_ft, self.d_ft, self.c_ft = self.computeTPS_QR(xpoly_res, virtual_ypoly, lambda1, lambda2)
                     self.K_bt, self.d_bt, self.c_bt = self.computeTPS_QR(ypoly_res, virtual_xpoly, lambda1, lambda2)
