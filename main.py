@@ -131,13 +131,13 @@ def compute_tubular():
                           output_keys=('fpoly_rectum', 'mpoly_rectum')),
         SITKToNumpy(input_keys=('fixed_rectum', 'moving_rectum'),
                     output_keys=('fixed_rectum', 'moving_rectum')),
-        # ExtractCenterline(input_keys=('fixed_rectum', 'moving_rectum',),
-        #                   output_keys=('fixed_centerline', 'moving_centerline',)),
-        # CenterlineImageToPolydata(input_keys=('fixed_centerline', 'moving_centerline',),
-        #                   output_keys=('fpoly_centerline', 'mpoly_centerline',)),
         ACVDResampling(input_keys=('fpoly_rectum', 'mpoly_rectum'),
                        output_keys=('xpoly', 'ypoly'),
-                       np_points=(2000, 2000,)),
+                       np_points=(1000, 1000,)),
+        ExtractCenterline(input_keys=('fixed_rectum', 'moving_rectum',),
+                          output_keys=('fixed_centerline', 'moving_centerline',)),
+        CenterlineToPolydata(input_keys=('fixed_centerline', 'moving_centerline',),
+                          output_keys=('fpoly_centerline', 'mpoly_centerline',)),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
@@ -149,7 +149,7 @@ def compute_tubular():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, passband=[1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -163,5 +163,5 @@ def compute_tubular():
 # TODO finite element model using unstructured structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
-    compute_multi_organs()
-    #compute_tubular()
+    #compute_multi_organs()
+    compute_tubular()

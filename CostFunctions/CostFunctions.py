@@ -504,9 +504,9 @@ class STPSRPM(CostFunction):
 
                 # monitor distance to agreement between the meshes
                 # compute average change over the last 5 iterations
-                xdta = compute_mean_dist(self.ypoly, virtual_xpoly)
-                ydta = compute_mean_dist(self.xpoly, virtual_ypoly)
-                print("     DTA, forward: {:5.4f}, backward: {:5.4f}".format(xdta, ydta))
+                # xdta = compute_mean_dist(self.ypoly, virtual_xpoly)
+                # ydta = compute_mean_dist(self.xpoly, virtual_ypoly)
+                # print("     DTA, forward: {:5.4f}, backward: {:5.4f}".format(xdta, ydta))
                 # self.metric_watcher.append((xdta+ydta)/2)
                 # if len(self.metric_watcher) == self.watcher_size:
                 #     avg_metric = sum(self.metric_watcher) / len(self.metric_watcher)

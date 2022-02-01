@@ -687,38 +687,40 @@ class ExtractCenterline(Processor):
             graphs, imgB = self.buildTree(img=skelet, start=None)
             filtered_graph = self.filter_graphs(graphs)
             filtered_skelet = np.zeros_like(skelet)
-            indices = np.transpose(np.array([n.point for n in list(nx.nodes(filtered_graph))]))
-            filtered_skelet[tuple(indices)] = 1
+            indices = np.array([n.point for n in list(nx.nodes(filtered_graph))])
+            filtered_skelet[tuple(np.transpose(indices))] = 1
             skelet_image = np.zeros_like(image)
             skelet_image[bb_parameters[0]:bb_parameters[1],
             bb_parameters[2]:bb_parameters[3],
             bb_parameters[4]:bb_parameters[5]] = filtered_skelet
             input_features[output_key] = skelet_image
+            input_features[output_key+'_sorted_pts'] = indices
         return input_features
 
-class CenterlineImageToPolydata(Processor):
+class CenterlineToPolydata(Processor):
     def __init__(self, input_keys=('fixed_centerline', 'moving_centerline',),
-                 output_keys=('fpoly_centerline', 'mpoly_centerline',)):
+                 output_keys=('fpoly_centerline', 'mpoly_centerline',), nbsplinepts=100):
         self.input_keys = input_keys
         self.output_keys = output_keys
-        self.nbsplinepts = 100
+        self.nbsplinepts = nbsplinepts
+        # TODO add spacing, origin to shift the generated centerline back to the polydata space
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
         for input_key, output_key in zip(self.input_keys, self.output_keys):
-            centerline_img = input_features[input_key]
-            new_points = numpy_support.numpy_to_vtk(np.transpose(np.array(np.where(centerline_img))))
+            sorted_points = input_features[input_key+'_sorted_pts']
+            new_points = numpy_support.numpy_to_vtk(sorted_points)
             vtkPts = vtk.vtkPoints()
             vtkPts.SetData(new_points)
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(vtkPts)
             lines = vtk.vtkCellArray()
-            # for pts in range(vtkPts.GetNumberOfPoints()-1):
-            #     line = vtk.vtkLine()
-            #     line.GetPointIds().SetId(0, pts)
-            #     line.GetPointIds().SetId(1, pts+1)
-            #     lines.InsertNextCell(line)
-            # polydata.SetLines(lines)
+            for pts in range(vtkPts.GetNumberOfPoints()-1):
+                line = vtk.vtkLine()
+                line.GetPointIds().SetId(0, pts)
+                line.GetPointIds().SetId(1, pts+1)
+                lines.InsertNextCell(line)
+            polydata.SetLines(lines)
             clean_polydata = vtk.vtkCleanPolyData()
             clean_polydata.SetInputData(polydata)
             clean_polydata.Update()
@@ -737,8 +739,4 @@ class CenterlineImageToPolydata(Processor):
             function_source.SetWResolution(self.nbsplinepts)
             function_source.Update()
             input_features[output_key] = function_source.GetOutput()
-            writer = PolydataReaderWriter(filepath=r'C:\Data\Data_test\test_centerline.vtk', polydata=function_source.GetOutput())
-            writer.export_data()
-            writer = PolydataReaderWriter(filepath=r'C:\Data\Data_test\test_centerline_pts.vtk', polydata=polydata)
-            writer.export_data()
-            xxx = 1
+        return input_features
