@@ -694,31 +694,45 @@ class ExtractCenterline(Processor):
             bb_parameters[2]:bb_parameters[3],
             bb_parameters[4]:bb_parameters[5]] = filtered_skelet
             input_features[output_key] = skelet_image
-            input_features[output_key+'_sorted_pts'] = indices
+            # add offset of cropping
+            indices = indices + [bb_parameters[0], bb_parameters[2], bb_parameters[4]]
+            # reorder into X, Y, Z direction here
+            input_features[output_key + '_sorted_pts'] = indices[:, [2, 1, 0]]
         return input_features
+
 
 class CenterlineToPolydata(Processor):
     def __init__(self, input_keys=('fixed_centerline', 'moving_centerline',),
-                 output_keys=('fpoly_centerline', 'mpoly_centerline',), nbsplinepts=100):
+                 output_keys=('fpoly_centerline', 'mpoly_centerline',),
+                 spacing_keys=(), origin_keys=(), nbsplinepts=100):
         self.input_keys = input_keys
         self.output_keys = output_keys
+        empty_tuple = tuple([None for i in self.input_keys])
+        self.spacing_keys = empty_tuple if len(spacing_keys) == 0 else spacing_keys
+        self.origin_keys = empty_tuple if len(origin_keys) == 0 else origin_keys
         self.nbsplinepts = nbsplinepts
-        # TODO add spacing, origin to shift the generated centerline back to the polydata space
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
-        for input_key, output_key in zip(self.input_keys, self.output_keys):
-            sorted_points = input_features[input_key+'_sorted_pts']
+        for input_key, output_key, spacing_key, origin_key in zip(self.input_keys, self.output_keys, self.spacing_keys,
+                                                                  self.origin_keys):
+            sorted_points = input_features[input_key + '_sorted_pts']
+            if spacing_key:
+                spacing = input_features[spacing_key]
+                sorted_points = sorted_points * spacing
+            if origin_key:
+                origin = input_features[origin_key]
+                sorted_points = sorted_points + origin
             new_points = numpy_support.numpy_to_vtk(sorted_points)
             vtkPts = vtk.vtkPoints()
             vtkPts.SetData(new_points)
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(vtkPts)
             lines = vtk.vtkCellArray()
-            for pts in range(vtkPts.GetNumberOfPoints()-1):
+            for pts in range(vtkPts.GetNumberOfPoints() - 1):
                 line = vtk.vtkLine()
                 line.GetPointIds().SetId(0, pts)
-                line.GetPointIds().SetId(1, pts+1)
+                line.GetPointIds().SetId(1, pts + 1)
                 lines.InsertNextCell(line)
             polydata.SetLines(lines)
             clean_polydata = vtk.vtkCleanPolyData()

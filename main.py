@@ -137,7 +137,9 @@ def compute_tubular():
         ExtractCenterline(input_keys=('fixed_rectum', 'moving_rectum',),
                           output_keys=('fixed_centerline', 'moving_centerline',)),
         CenterlineToPolydata(input_keys=('fixed_centerline', 'moving_centerline',),
-                          output_keys=('fpoly_centerline', 'mpoly_centerline',)),
+                             output_keys=('fpoly_centerline', 'mpoly_centerline',),
+                             origin_keys=('fixed_rectum_origin', 'moving_rectum_origin'),
+                             spacing_keys=('fixed_rectum_spacing', 'moving_rectum_spacing')),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',)),
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
@@ -163,5 +165,5 @@ def compute_tubular():
 # TODO finite element model using unstructured structure
 # TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
 if __name__ == '__main__':
-    #compute_multi_organs()
+    # compute_multi_organs()
     compute_tubular()
