@@ -81,6 +81,17 @@ def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
     return input_img
 
 
+def get_polydata_scale(polydata, centroid):
+    '''
+    :param polydata: vtk polydata
+    :param centroid: polydata centroid as tuple
+    :return: return squared root of the summed euclidean distance between points and centroid divided by number of points
+    '''
+    points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
+    scale = math.sqrt(np.sum(np.sum(np.square(points - centroid), axis=-1)) / points.shape[0])
+    return scale
+
+
 def get_polydata_centroid(polydata):
     center_filter = vtk.vtkCenterOfMass()
     center_filter.SetInputData(polydata)
@@ -173,25 +184,33 @@ class SITKToNumpy(Processor):
         return input_features
 
 
+class GetZNormParameters(Processor):
+    def __init__(self, input_keys=('xpoly', 'ypoly'), centroid_keys=('KEY_centroid', 'KEY_centroid',),
+                 scale_keys=('KEY_scale', 'KEY_scale')):
+        self.input_keys = input_keys
+        self.centroid_keys = centroid_keys
+        self.scale_keys = scale_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, centroid_key, scale_key in zip(self.input_keys, self.centroid_keys, self.scale_keys):
+            polydata = input_features[input_key]
+            centroid = get_polydata_centroid(polydata)
+            scale = get_polydata_scale(polydata, centroid)
+            input_features[centroid_key] = centroid
+            input_features[scale_key] = scale
+        return input_features
+
+
 class ZNormPoly(Processor):
     def __init__(self, input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                 post_process_keys=(), centroid_keys=('centroid', 'centroid',),
-                 scale_keys=('scale', 'scale')):
+                 post_process_keys=(), centroid_keys=('KEY_centroid', 'KEY_centroid',),
+                 scale_keys=('KEY_scale', 'KEY_scale')):
         self.input_keys = input_keys
         self.output_keys = output_keys
         self.post_process_keys = post_process_keys
         self.centroid_keys = centroid_keys
         self.scale_keys = scale_keys
-
-    def get_scale(self, polydata, centroid):
-        '''
-        :param polydata: vtk polydata
-        :param centroid: polydata centroid as tuple
-        :return: return squared root of the summed euclidean distance between points and centroid divided by number of points
-        '''
-        points = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
-        scale = math.sqrt(np.sum(np.sum(np.square(points - centroid), axis=-1)) / points.shape[0])
-        return scale
 
     def apply_z_norm(self, polydata, centroid, scale):
         point_data = polydata.GetPoints().GetData()
@@ -218,11 +237,9 @@ class ZNormPoly(Processor):
         for input_key, output_key, centroid_key, scale_key in zip(self.input_keys, self.output_keys, self.centroid_keys,
                                                                   self.scale_keys):
             polydata = input_features[input_key]
-            centroid = get_polydata_centroid(polydata)
-            scale = self.get_scale(polydata, centroid)
+            centroid = input_features[centroid_key]
+            scale = input_features[scale_key]
             input_features[output_key] = self.apply_z_norm(polydata, centroid, scale)
-            input_features[output_key + '_' + centroid_key] = centroid
-            input_features[output_key + '_' + scale_key] = scale
         return input_features
 
     def post_process(self, input_features):
@@ -231,8 +248,8 @@ class ZNormPoly(Processor):
                                                                          self.centroid_keys,
                                                                          self.scale_keys):
             polydata = input_features[post_process_key]
-            centroid = input_features[post_process_key + '_' + centroid_key]
-            scale = input_features[post_process_key + '_' + scale_key]
+            centroid = input_features[centroid_key]
+            scale = input_features[scale_key]
             input_features[output_key] = self.unapply_z_norm(polydata, centroid, scale)
         return input_features
 
@@ -277,10 +294,12 @@ class AlignCentroid(Processor):
 
 class CreateDVF(Processor):
     def __init__(self, reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
-                 output_keys=('ft_dvf', 'bt_dvf',), set_scalars=True):
+                 output_keys=('ft_dvf', 'bt_dvf',), run_pre_process=False, run_post_process=False, set_scalars=True):
         self.reference_keys = reference_keys
         self.deformed_keys = deformed_keys
         self.output_keys = output_keys
+        self.run_pre_process = run_pre_process
+        self.run_post_process = run_post_process
         self.set_scalars = set_scalars
 
     def create_dvf(self, reference, deformed, set_scalars=True):
@@ -300,12 +319,21 @@ class CreateDVF(Processor):
         return output
 
     def pre_process(self, input_features):
+        if self.run_pre_process:
+            for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys,
+                                                               self.output_keys):
+                input_features[output_key] = self.create_dvf(input_features[reference_key],
+                                                             input_features[deformed_key],
+                                                             set_scalars=self.set_scalars)
         return input_features
 
     def post_process(self, input_features):
-        for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys, self.output_keys):
-            input_features[output_key] = self.create_dvf(input_features[reference_key], input_features[deformed_key],
-                                                         set_scalars=self.set_scalars)
+        if self.run_post_process:
+            for reference_key, deformed_key, output_key in zip(self.reference_keys, self.deformed_keys,
+                                                               self.output_keys):
+                input_features[output_key] = self.create_dvf(input_features[reference_key],
+                                                             input_features[deformed_key],
+                                                             set_scalars=self.set_scalars)
         return input_features
 
 

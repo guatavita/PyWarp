@@ -140,31 +140,43 @@ def compute_tubular():
                              output_keys=('fpoly_centerline', 'mpoly_centerline',),
                              origin_keys=('fixed_rectum_origin', 'moving_rectum_origin'),
                              spacing_keys=('fixed_rectum_spacing', 'moving_rectum_spacing')),
+        CreateDVF(reference_keys=('fpoly_centerline',), deformed_keys=('mpoly_centerline',),
+                  output_keys=('centerline_dvf',), run_pre_process=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
-                  output_keys=('ft_dvf', 'bt_dvf',)),
-        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
-                             post_process_keys=('bt_poly', 'ft_poly',), paired=False),
-        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                  post_process_keys=('xpoly', 'ypoly')),
-        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
+                  output_keys=('ft_dvf', 'bt_dvf',), run_post_process=True),
+        DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly'), pre_process_keys=('ypoly', 'xpoly'),
+                             post_process_keys=('bt_poly', 'ft_poly'), paired=False),
+        GetZNormParameters(input_keys=('xpoly', 'ypoly'), centroid_keys=('xpoly_centroid', 'ypoly_centroid'),
+                           scale_keys=('xpoly_scale', 'ypoly_scale')),
+        ZNormPoly(input_keys=('xpoly', 'ypoly', 'fpoly_centerline', 'mpoly_centerline'),
+                  output_keys=('xpoly', 'ypoly', 'fpoly_centerline', 'mpoly_centerline'),
+                  post_process_keys=('xpoly', 'ypoly', 'fpoly_centerline', 'mpoly_centerline'),
+                  centroid_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_centroid', 'ypoly_centroid'),
+                  scale_keys=('xpoly_scale', 'ypoly_scale', 'xpoly_scale', 'ypoly_scale')),
+        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly'),
+                  centroid_keys=('ypoly_centroid', 'xpoly_centroid'),
+                  scale_keys=('ypoly_scale', 'xpoly_scale')),
         CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', xlm_key='fpoly_centerline', ylm_key='mpoly_centerline',
+                use_scalar_vtk=False, passband=[0.01, 0.1, 1])
     )
 
     # build model
     deformable_model.load_data(input_features)
     deformable_model.pre_process(input_features)
-    plot_vtk([input_features['xpoly'], input_features['fpoly_centerline']])
+    # plot_vtk([input_features['xpoly'],input_features['fpoly_centerline']], [input_features['ypoly'],input_features['mpoly_centerline']])
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
     plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
 
 
 # TODO finite element model using unstructured structure
-# TODO find extremities of a tubular structure by computing the centroid of the two most distant regions
+# TODO work on getting the scalars to the rectum polydata
+# TODO select scalars in the STPSRPM ? (or define a function to set the active scalar of each polydata)
+
 if __name__ == '__main__':
     # compute_multi_organs()
     compute_tubular()

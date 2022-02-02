@@ -197,7 +197,7 @@ class STPSRPM(CostFunction):
         self.xlm_vtk = input_features.get(self.xlm_key)
         self.ylm_vtk = input_features.get(self.ylm_key)
         self.lm_size = 0
-        if self.xlm_vtk and self.ylm:
+        if self.xlm_vtk and self.ylm_vtk:
             if self.xlm_vtk.GetNumberOfPoints() != self.ylm_vtk.GetNumberOfPoints():
                 raise ValueError("Provided landmarks does not have the same size")
             self.lm_size = self.xlm_vtk.GetNumberOfPoints()
