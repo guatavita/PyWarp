@@ -141,7 +141,8 @@ class CostFunction(object):
 class STPSRPM(CostFunction):
     def __init__(self, xpoly_key='xpoly', ypoly_key='xpoly', ft_out_key='ft_poly', bt_out_key='bt_poly',
                  lambda1_init=0.01, lambda2_init=1, T_init=0.5, T_final=0.001, anneal_rate=0.93, threshold=0.000001,
-                 use_scalar_vtk=False, xlm_key=None, ylm_key=None, passband=[1], iterative_norm=True, nbiter=None):
+                 use_scalar_vtk=False, xlm_key=None, ylm_key=None, passband=[1], iterative_norm=True, nbiter=None,
+                 scalars_name=None):
         """
         :param xpoly_key: source input as a VTK polydata
         :param ypoly_key: target input as a VTK polydata
@@ -167,6 +168,7 @@ class STPSRPM(CostFunction):
         self.D = 3
         self.threshold = threshold
         self.use_scalar_vtk = use_scalar_vtk
+        self.scalars_name = scalars_name
         self.passband = passband
         self.iterative_norm = iterative_norm
         self.perT_maxit = 2
@@ -187,7 +189,9 @@ class STPSRPM(CostFunction):
         _check_keys_(input_features, (self.xpoly_key, self.ypoly_key))
         self.xpoly_vtk = input_features[self.xpoly_key]
         self.ypoly_vtk = input_features[self.ypoly_key]
-        if self.use_scalar_vtk:
+        if self.use_scalar_vtk and self.scalars_name:
+            self.xpoly_vtk.GetPointData().SetActiveScalars(self.scalars_name)
+            self.ypoly_vtk.GetPointData().SetActiveScalars(self.scalars_name)
             self.xscalar_vtk = self.xpoly_vtk.GetPointData().GetScalars()
             self.yscalar_vtk = self.ypoly_vtk.GetPointData().GetScalars()
             if self.xscalar_vtk == None or self.yscalar_vtk == None:

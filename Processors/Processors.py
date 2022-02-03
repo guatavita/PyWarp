@@ -819,7 +819,7 @@ class ComputeLaplacianCorrespondence(Processor):
                 # avoid internal leaking to input border
                 internal = internal * erode_input
 
-            laplacian_filter = Laplacian(input=input, internal=internal, spacing=spacing[[2,1,0]],
+            laplacian_filter = Laplacian(input=input, internal=internal, spacing=spacing[[2, 1, 0]],
                                          cl_max=1000, cl_min=200, compute_thickness=False,
                                          compute_internal_corresp=True, compute_external_corresp=False, verbose=False)
             input_features[output_key] = laplacian_filter.phi0
@@ -840,7 +840,8 @@ class CenterlineProjection(Processor):
         self.spacing_keys = identity_tuple if len(spacing_keys) == 0 else spacing_keys
 
     def find_closest_vector_index(self, point, vector_indices, spacing, origin):
-        distances = np.sqrt(np.sum(np.square((vector_indices*spacing[[2, 1, 0]]+origin[[2, 1, 0]])-point[[2, 1, 0]]), axis=-1))
+        distances = np.sqrt(
+            np.sum(np.square((vector_indices * spacing[[2, 1, 0]] + origin[[2, 1, 0]]) - point[[2, 1, 0]]), axis=-1))
         closest_index = np.argmin(distances)
         return closest_index
 
@@ -860,7 +861,7 @@ class CenterlineProjection(Processor):
 
             polydata_pts = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
             centerline_pts = numpy_support.vtk_to_numpy(centerline.GetPoints().GetData())
-            indices = np.argwhere(correspondence>0)[..., 0:3]
+            indices = np.argwhere(correspondence > 0)[..., 0:3]
             scalar = np.zeros(len(polydata_pts))
             vector_field = np.zeros_like(polydata_pts)
             vector_field_filtered = np.zeros_like(polydata_pts)
@@ -869,24 +870,23 @@ class CenterlineProjection(Processor):
                 point = polydata_pts[i]
                 vector_index = self.find_closest_vector_index(point, indices, spacing, origin)
                 vector = correspondence[tuple(indices[vector_index])]
-                vector_field[i] = vector[[2,1,0]]
-                projected_point = point + vector[[2,1,0]]
-                pts_distances = np.sqrt(np.sum(np.square(centerline_pts-projected_point), axis=-1))
+                vector_field[i] = vector[[2, 1, 0]]
+                projected_point = point + vector[[2, 1, 0]]
+                pts_distances = np.sqrt(np.sum(np.square(centerline_pts - projected_point), axis=-1))
                 closest_index = np.argmin(pts_distances)
-                scalar[i] = closest_index/len(polydata_pts)
-                vector_field_filtered = centerline_pts[closest_index]-point
+                scalar[i] = closest_index / (len(centerline_pts) - 1)
+                vector_field_filtered[i] = centerline_pts[closest_index] - point
 
+            output = vtk.vtkPolyData()
+            output.DeepCopy(polydata)
             # vtk_vector_field = numpy_support.numpy_to_vtk(vector_field)
             # vtk_vector_field.SetName('Correspondence')
-            # polydata.GetPointData().SetVectors(vtk_vector_field)
+            # output.GetPointData().SetVectors(vtk_vector_field)
             vtk_vector_field = numpy_support.numpy_to_vtk(vector_field_filtered)
             vtk_vector_field.SetName('Filtered_correspondence')
-            polydata.GetPointData().SetVectors(vtk_vector_field)
+            output.GetPointData().SetVectors(vtk_vector_field)
             vtk_scalar = numpy_support.numpy_to_vtk(scalar)
             vtk_scalar.SetName('Length')
-            polydata.GetPointData().SetScalars(vtk_scalar)
-            plot_vtk(polydata, centerline)
-
-            xxx = 1
-
-
+            output.GetPointData().SetScalars(vtk_scalar)
+            input_features[output_key] = output
+        return input_features
