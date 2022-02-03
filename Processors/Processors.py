@@ -17,7 +17,7 @@ import pyvista as pv
 import pyacvd
 
 from skimage import morphology
-from scipy.ndimage import binary_opening, binary_closing
+from scipy.ndimage import binary_opening, binary_closing, binary_erosion, binary_dilation
 
 from threading import Thread
 from multiprocessing import cpu_count
@@ -29,6 +29,7 @@ import networkx as nx
 from IOTools.IOTools import DataConverter, PolydataReaderWriter
 from PlotVTK.PlotVTK import plot_vtk
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
+from .Laplacian.Laplacian import Laplacian
 
 
 def _check_keys_(input_features, keys):
@@ -71,6 +72,10 @@ def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
         input_img = binary_closing(input_img, structure=struct)
     elif morph_type == 'opening':
         input_img = binary_opening(input_img, structure=struct)
+    elif morph_type == 'erosion':
+        input_img = binary_erosion(input_img, structure=struct)
+    elif morph_type == 'dilation':
+        input_img = binary_dilation(input_img, structure=struct)
     else:
         raise ValueError("Type {} is not supported".format(morph_type))
 
@@ -778,3 +783,110 @@ class CenterlineToPolydata(Processor):
             function_source.Update()
             input_features[output_key] = function_source.GetOutput()
         return input_features
+
+
+class ComputeLaplacianCorrespondence(Processor):
+    def __init__(self, input_keys=('fixed_rectum', 'moving_rectum',),
+                 centerline_keys=('fixed_centerline', 'moving_centerline',),
+                 output_keys=('fixed_correspondence', 'moving_correspondence',),
+                 spacing_keys=((1.0, 1.0, 1.0), (1.0, 1.0, 1.0),), dilate_centerline=False):
+        """
+        :param input_keys: input
+        :param centerline_keys: can be tuple of None
+        :param output_keys:
+        :param spacing_keys: for example ((1.0, 1.0, 1.0), (1.0, 1.0, 1.0),))
+        :param dilate_centerline: bool to increase size of internal condition
+        """
+        self.input_keys = input_keys
+        empty_tuple = tuple([None for i in self.input_keys])
+        self.centerline_keys = empty_tuple if len(centerline_keys) == 0 else centerline_keys
+        self.output_keys = output_keys
+        identity_tuple = tuple([(1.0, 1.0, 1.0) for i in self.input_keys])
+        self.spacing_keys = identity_tuple if len(spacing_keys) == 0 else spacing_keys
+        self.dilate_centerline = dilate_centerline
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys + self.centerline_keys)
+        for input_key, centerline_key, output_key, spacing_key in zip(self.input_keys, self.centerline_keys,
+                                                                      self.output_keys, self.spacing_keys):
+            input = input_features[input_key]
+            internal = input_features[centerline_key]
+            spacing = input_features[spacing_key]
+
+            if self.dilate_centerline:
+                erode_input = compute_binary_morphology(input, radius=1, morph_type='erosion')
+                internal = compute_binary_morphology(internal, radius=2, morph_type='dilation')
+                # avoid internal leaking to input border
+                internal = internal * erode_input
+
+            laplacian_filter = Laplacian(input=input, internal=internal, spacing=spacing[[2,1,0]],
+                                         cl_max=1000, cl_min=200, compute_thickness=False,
+                                         compute_internal_corresp=True, compute_external_corresp=False, verbose=False)
+            input_features[output_key] = laplacian_filter.phi0
+        return input_features
+
+
+class CenterlineProjection(Processor):
+    def __init__(self, input_keys=('xpoly', 'ypoly',), centerline_keys=('fpoly_centerline', 'mpoly_centerline',),
+                 correspondence_keys=('fixed_correspondence', 'moving_correspondence',),
+                 output_keys=('xpoly', 'ypoly',), origin_keys=(), spacing_keys=()):
+        self.input_keys = input_keys
+        self.centerline_keys = centerline_keys
+        self.correspondence_keys = correspondence_keys
+        self.output_keys = output_keys
+        zeros_tuple = tuple([(0.0, 0.0, 0.0) for i in self.input_keys])
+        identity_tuple = tuple([(1.0, 1.0, 1.0) for i in self.input_keys])
+        self.origin_keys = zeros_tuple if len(origin_keys) == 0 else origin_keys
+        self.spacing_keys = identity_tuple if len(spacing_keys) == 0 else spacing_keys
+
+    def find_closest_vector_index(self, point, vector_indices, spacing, origin):
+        distances = np.sqrt(np.sum(np.square((vector_indices*spacing[[2, 1, 0]]+origin[[2, 1, 0]])-point[[2, 1, 0]]), axis=-1))
+        closest_index = np.argmin(distances)
+        return closest_index
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys + self.centerline_keys + self.correspondence_keys)
+        for input_key, centerline_key, correspondence_key, output_key, origin_key, spacing_key in zip(self.input_keys,
+                                                                                                      self.centerline_keys,
+                                                                                                      self.correspondence_keys,
+                                                                                                      self.output_keys,
+                                                                                                      self.origin_keys,
+                                                                                                      self.spacing_keys):
+            polydata = input_features[input_key]
+            centerline = input_features[centerline_key]
+            correspondence = input_features[correspondence_key]
+            origin = input_features[origin_key]
+            spacing = input_features[spacing_key]
+
+            polydata_pts = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
+            centerline_pts = numpy_support.vtk_to_numpy(centerline.GetPoints().GetData())
+            indices = np.argwhere(correspondence>0)[..., 0:3]
+            scalar = np.zeros(len(polydata_pts))
+            vector_field = np.zeros_like(polydata_pts)
+            vector_field_filtered = np.zeros_like(polydata_pts)
+
+            for i in range(len(polydata_pts)):
+                point = polydata_pts[i]
+                vector_index = self.find_closest_vector_index(point, indices, spacing, origin)
+                vector = correspondence[tuple(indices[vector_index])]
+                vector_field[i] = vector[[2,1,0]]
+                projected_point = point + vector[[2,1,0]]
+                pts_distances = np.sqrt(np.sum(np.square(centerline_pts-projected_point), axis=-1))
+                closest_index = np.argmin(pts_distances)
+                scalar[i] = closest_index/len(polydata_pts)
+                vector_field_filtered = centerline_pts[closest_index]-point
+
+            # vtk_vector_field = numpy_support.numpy_to_vtk(vector_field)
+            # vtk_vector_field.SetName('Correspondence')
+            # polydata.GetPointData().SetVectors(vtk_vector_field)
+            vtk_vector_field = numpy_support.numpy_to_vtk(vector_field_filtered)
+            vtk_vector_field.SetName('Filtered_correspondence')
+            polydata.GetPointData().SetVectors(vtk_vector_field)
+            vtk_scalar = numpy_support.numpy_to_vtk(scalar)
+            vtk_scalar.SetName('Length')
+            polydata.GetPointData().SetScalars(vtk_scalar)
+            plot_vtk(polydata, centerline)
+
+            xxx = 1
+
+
