@@ -184,8 +184,6 @@ def compute_tubular():
 
 
 # TODO finite element model using unstructured structure
-# TODO work on getting the scalars to the rectum polydata
-# TODO select scalars in the STPSRPM ? (or define a function to set the active scalar of each polydata)
 
 if __name__ == '__main__':
     # compute_multi_organs()
