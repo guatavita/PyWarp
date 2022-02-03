@@ -1,3 +1,6 @@
 [submodule "PlotVTK"]
 	path = PlotVTK
 	url = https://github.com/guatavita/PlotVTK
+[submodule "Laplacian"]
+	path = Laplacian
+	url = https://github.com/guatavita/Laplacian.git

@@ -167,7 +167,13 @@ def compute_tubular():
     # build model
     deformable_model.load_data(input_features)
     deformable_model.pre_process(input_features)
-    # plot_vtk([input_features['xpoly'],input_features['fpoly_centerline']], [input_features['ypoly'],input_features['mpoly_centerline']])
+
+    centerline_image = sitk.GetImageFromArray(input_features['fixed_centerline'])
+    centerline_image.SetSpacing(input_features['fixed_rectum_spacing'])
+    centerline_image.SetOrigin(input_features['fixed_rectum_origin'])
+    nifti_writer = ImageReaderWriter(filepath=r'C:\Data\Data_test\Rectum_ext_0_centerline.nii.gz', image=centerline_image)
+
+    plot_vtk([input_features['xpoly'],input_features['fpoly_centerline']], [input_features['ypoly'],input_features['mpoly_centerline']])
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
     plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
