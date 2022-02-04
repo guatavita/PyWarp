@@ -109,7 +109,7 @@ def compute_multi_organs():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, nbiter = 3, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -191,5 +191,5 @@ def compute_tubular():
 
 # TODO finite element model using unstructured structure
 if __name__ == '__main__':
-    compute_multi_organs()
-    # compute_tubular()
+    # compute_multi_organs()
+    compute_tubular()
