@@ -146,6 +146,8 @@ class STPSRPM(CostFunction):
         """
         :param xpoly_key: source input as a VTK polydata
         :param ypoly_key: target input as a VTK polydata
+        :param ft_out_key: forward transformation output key (x deform towards y)
+        :param bt_out_key: backward transformation output key (y deform towards x)
         :param lambda1: lambda1 init value, weight for the 'non-linear' part of the TPS
         :param lambda2: lambda2 init value, Weight for the affine part of the TPS
         :param t_init: initial temperature value

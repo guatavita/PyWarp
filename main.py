@@ -93,17 +93,23 @@ def compute_multi_organs():
         JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly',
                  use_scalar=True),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
-                  output_keys=('ft_dvf', 'bt_dvf',)),
+                  output_keys=('ft_dvf', 'bt_dvf',), run_post_process=True),
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
                              post_process_keys=('bt_poly', 'ft_poly',), paired=False),
-        ZNormPoly(input_keys=('xpoly', 'ypoly'), output_keys=('xpoly', 'ypoly'),
-                  post_process_keys=('xpoly', 'ypoly')),
-        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly')),
+        GetZNormParameters(input_keys=('xpoly', 'ypoly'), centroid_keys=('xpoly_centroid', 'ypoly_centroid'),
+                           scale_keys=('xpoly_scale', 'ypoly_scale')),
+        ZNormPoly(input_keys=('xpoly', 'ypoly',),
+                  output_keys=('xpoly', 'ypoly',),
+                  post_process_keys=('xpoly', 'ypoly',),
+                  centroid_keys=('xpoly_centroid', 'ypoly_centroid',),
+                  scale_keys=('xpoly_scale', 'ypoly_scale',)),
+        ZNormPoly(input_keys=(), output_keys=('ft_poly', 'bt_poly'), post_process_keys=('ft_poly', 'bt_poly'),
+                  centroid_keys=('ypoly_centroid', 'xpoly_centroid'), scale_keys=('ypoly_scale', 'xpoly_scale')),
         CopyKey(input_keys=('xpoly_centroid', 'ypoly_centroid', 'xpoly_scale', 'ypoly_scale'),
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, nbiter = 10, passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -184,7 +190,6 @@ def compute_tubular():
 
 
 # TODO finite element model using unstructured structure
-
 if __name__ == '__main__':
-    # compute_multi_organs()
-    compute_tubular()
+    compute_multi_organs()
+    # compute_tubular()
