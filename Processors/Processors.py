@@ -121,7 +121,7 @@ class Processor(object):
 
 
 class ACVDResampling(Processor):
-    def __init__(self, input_keys=('input_name',), output_keys=('output_name',), np_points=(5000,)):
+    def __init__(self, input_keys=('input_name',), output_keys=('output_name',), nb_points=(5000,)):
         self.input_keys = input_keys
         self.output_keys = output_keys
         self.np_points = np_points
