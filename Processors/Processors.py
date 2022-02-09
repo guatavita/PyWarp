@@ -124,7 +124,7 @@ class ACVDResampling(Processor):
     def __init__(self, input_keys=('input_name',), output_keys=('output_name',), nb_points=(5000,)):
         self.input_keys = input_keys
         self.output_keys = output_keys
-        self.np_points = np_points
+        self.nb_points = nb_points
 
     def compute_acvd(self, polydata, nb_points):
         pv_temp = pv.PolyData(polydata)
@@ -139,8 +139,8 @@ class ACVDResampling(Processor):
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
-        for input_key, output_key, np_point in zip(self.input_keys, self.output_keys, self.np_points):
-            input_features[output_key] = self.compute_acvd(input_features[input_key], np_point)
+        for input_key, output_key, nb_point in zip(self.input_keys, self.output_keys, self.nb_points):
+            input_features[output_key] = self.compute_acvd(input_features[input_key], nb_point)
         return input_features
 
 
