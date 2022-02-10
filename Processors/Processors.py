@@ -124,7 +124,6 @@ def threshold_polydata(polydata, lower_th, upper_th=None, return_selection=False
     return output
 
 def threshold_selection_polydata(polydata, value_condition=0):
-    output = vtk.vtkPolyData()
     np_scalars = numpy_support.vtk_to_numpy(polydata.GetPointData().GetScalars())
     np_indices = np.flatnonzero(np_scalars == value_condition)
     extract_selection_filter = vtk.vtkExtractSelection()
@@ -146,8 +145,12 @@ def threshold_selection_polydata(polydata, value_condition=0):
     extract_selection_filter.SetInputData(0, polydata)
     extract_selection_filter.SetInputData(1, selection)
     extract_selection_filter.Update()
-    output.DeepCopy(extract_selection_filter.GetOutput())
-    return output
+
+    geometry_filter = vtk.vtkGeometryFilter()
+    geometry_filter.SetInputConnection(extract_selection_filter.GetOutputPort())
+    geometry_filter.Update()
+
+    return geometry_filter.GetOutput()
 
 class Processor(object):
     def pre_process(self, input_features):
@@ -448,23 +451,22 @@ class DistanceBasedMetrics(Processor):
         return dta_metric, hd_metric, hd_95th_metric
 
     def compute_metric(self, ref_key, input_key, input_features):
+        refence_polydata = input_features[ref_key]
+        input_polydata = input_features[input_key]
+
         if self.use_scalars:
-            refence_polydata = input_features[ref_key]
             refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
             scalar_range = refence_polydata.GetScalarRange()
-            input_polydata = input_features[input_key]
             for value in range(int(max(scalar_range)) + 1):
                 reference_temp = threshold_polydata(refence_polydata, value)
                 input_temp = threshold_polydata(input_polydata, value)
-                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
-                                                                                      input_temp,
+                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp, input_temp,
                                                                                       paired=self.paired)
                 input_features["{}_{}_dta_{}".format(ref_key, input_key, value)] = dta_metric
                 input_features["{}_{}_hd_{}".format(ref_key, input_key, value)] = hd_metric
                 input_features["{}_{}_hd95th_{}".format(ref_key, input_key, value)] = hd_95th_metric
         else:
-            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[ref_key],
-                                                                                  input_features[input_key],
+            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(refence_polydata, input_polydata,
                                                                                   paired=self.paired)
             input_features["{}_{}_dta".format(ref_key, input_key)] = dta_metric
             input_features["{}_{}_hd".format(ref_key, input_key)] = hd_metric
@@ -498,22 +500,35 @@ class VolumeBasedMetrics(Processor):
         self.scalar_name = scalar_name
 
     def compute_metric(self, ref_key, input_key, input_features):
+        refence_polydata = input_features[ref_key]
+        input_polydata = input_features[input_key]
         if self.use_scalars:
-            refence_polydata = input_features[ref_key]
             refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
             scalar_range = refence_polydata.GetScalarRange()
-            input_polydata = input_features[input_key]
             for value in range(int(max(scalar_range)) + 1):
                 reference_temp = threshold_selection_polydata(refence_polydata, value)
-                ref_converter = DataConverter(polydata=reference_temp)
+                ref_converter = DataConverter(polydata=reference_temp, cast_float32=False)
                 ref_mask = ref_converter.polydata_to_mask()
                 input_temp = threshold_selection_polydata(input_polydata, value)
-                input_converter = DataConverter(polydata=input_temp)
+                input_converter = DataConverter(polydata=input_temp, cast_float32=False)
                 input_mask = input_converter.polydata_to_mask()
-
-                input_features["{}_{}_dsc_{}".format(ref_key, input_key, value)] = 0.0
+                input_mask = sitk.Resample(input_mask, ref_mask, interpolator=sitk.sitkNearestNeighbor, defaultPixelValue=0)
+                overlap_filter = sitk.LabelOverlapMeasuresImageFilter()
+                overlap_filter.Execute(ref_mask, input_mask)
+                input_features["{}_{}_dsc_{}".format(ref_key, input_key, value)] = overlap_filter.GetDiceCoefficient()
+                input_features["{}_{}_jacc_{}".format(ref_key, input_key, value)] = overlap_filter.GetJaccardCoefficient()
+                input_features["{}_{}_overlap_{}".format(ref_key, input_key, value)] = overlap_filter.GetVolumeSimilarity()
         else:
-            input_features["{}_{}_dsc".format(ref_key, input_key)] = 0.0
+            ref_converter = DataConverter(polydata=refence_polydata, cast_float32=False)
+            ref_mask = ref_converter.polydata_to_mask()
+            input_converter = DataConverter(polydata=input_polydata, cast_float32=False)
+            input_mask = input_converter.polydata_to_mask()
+            input_mask = sitk.Resample(input_mask, ref_mask, interpolator=sitk.sitkNearestNeighbor, defaultPixelValue=0)
+            overlap_filter = sitk.LabelOverlapMeasuresImageFilter()
+            overlap_filter.Execute(ref_mask, input_mask)
+            input_features["{}_{}_dsc".format(ref_key, input_key)] = overlap_filter.GetDiceCoefficient()
+            input_features["{}_{}_jacc".format(ref_key, input_key)] = overlap_filter.GetJaccardCoefficient()
+            input_features["{}_{}_overlap".format(ref_key, input_key)] = overlap_filter.GetVolumeSimilarity()
         return input_features
 
     def pre_process(self, input_features):
