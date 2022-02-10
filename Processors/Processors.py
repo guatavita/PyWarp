@@ -111,6 +111,43 @@ def translate_polydata(polydata, translation=(0., 0., 0.)):
     transform_filter.Update()
     return transform_filter.GetOutput()
 
+def threshold_polydata(polydata, lower_th, upper_th=None, return_selection=False):
+    output = vtk.vtkPolyData()
+    threshold_filter = vtk.vtkThresholdPoints()
+    threshold_filter.SetInputData(polydata)
+    if upper_th:
+        threshold_filter.ThresholdBetween(lower_th, upper_th)
+    else:
+        threshold_filter.ThresholdBetween(lower_th, lower_th+0.5)
+    threshold_filter.Update()
+    output.DeepCopy(threshold_filter.GetOutput())
+    return output
+
+def threshold_selection_polydata(polydata, value_condition=0):
+    output = vtk.vtkPolyData()
+    np_scalars = numpy_support.vtk_to_numpy(polydata.GetPointData().GetScalars())
+    np_indices = np.flatnonzero(np_scalars == value_condition)
+    extract_selection_filter = vtk.vtkExtractSelection()
+
+    vtk_ids = vtk.vtkIdTypeArray()
+    vtk_ids.SetNumberOfComponents(1)
+    for i in range(len(np_indices)):
+        vtk_ids.InsertNextValue(i)
+
+    selection_node = vtk.vtkSelectionNode()
+    selection_node.SetFieldType(vtk.vtkSelectionNode.POINT)
+    selection_node.SetContentType(vtk.vtkSelectionNode.INDICES)
+    selection_node.SetSelectionList(vtk_ids)
+    selection_node.GetProperties().Set(vtk.vtkSelectionNode.CONTAINING_CELLS(), 1)
+
+    selection = vtk.vtkSelection()
+    selection.AddNode(selection_node)
+
+    extract_selection_filter.SetInputData(0, polydata)
+    extract_selection_filter.SetInputData(1, selection)
+    extract_selection_filter.Update()
+    output.DeepCopy(extract_selection_filter.GetOutput())
+    return output
 
 class Processor(object):
     def pre_process(self, input_features):
@@ -374,7 +411,7 @@ class DistanceBasedMetrics(Processor):
         '''
         :param reference_keys:
         :param pre_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
-        :param post_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
+        :param post_process_keys: compute distance after deformation to evaluate rigid alignement (for ex)
         :param paired: bool if points from the reference and moving mesh have the same index (order)
         '''
         self.reference_keys = reference_keys
@@ -410,68 +447,85 @@ class DistanceBasedMetrics(Processor):
             hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))]) / 2
         return dta_metric, hd_metric, hd_95th_metric
 
-    def threshold_polydata(self, polydata, lower_th, upper_th=None):
-        output = vtk.vtkPolyData()
-        threshold_filter = vtk.vtkThresholdPoints()
-        threshold_filter.SetInputData(polydata)
-        if upper_th:
-            threshold_filter.ThresholdBetween(lower_th, upper_th)
+    def compute_metric(self, ref_key, input_key, input_features):
+        if self.use_scalars:
+            refence_polydata = input_features[ref_key]
+            refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
+            scalar_range = refence_polydata.GetScalarRange()
+            input_polydata = input_features[input_key]
+            for value in range(int(max(scalar_range)) + 1):
+                reference_temp = threshold_polydata(refence_polydata, value)
+                input_temp = threshold_polydata(input_polydata, value)
+                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
+                                                                                      input_temp,
+                                                                                      paired=self.paired)
+                input_features["{}_{}_dta_{}".format(ref_key, input_key, value)] = dta_metric
+                input_features["{}_{}_hd_{}".format(ref_key, input_key, value)] = hd_metric
+                input_features["{}_{}_hd95th_{}".format(ref_key, input_key, value)] = hd_95th_metric
         else:
-            threshold_filter.ThresholdBetween(lower_th, lower_th+0.5)
-        threshold_filter.Update()
-        output.DeepCopy(threshold_filter.GetOutput())
-        return output
+            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[ref_key],
+                                                                                  input_features[input_key],
+                                                                                  paired=self.paired)
+            input_features["{}_{}_dta".format(ref_key, input_key)] = dta_metric
+            input_features["{}_{}_hd".format(ref_key, input_key)] = hd_metric
+            input_features["{}_{}_hd95th".format(ref_key, input_key)] = hd_95th_metric
+        return input_features
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.reference_keys + self.pre_process_keys)
         for reference_key, pre_process_key in zip(self.reference_keys, self.pre_process_keys):
-            if self.use_scalars:
-                refence_polydata = input_features[reference_key]
-                refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
-                scalar_range = refence_polydata.GetScalarRange()
-                input_polydata = input_features[pre_process_key]
-                for value in range(int(max(scalar_range))+1):
-                    reference_temp = self.threshold_polydata(refence_polydata, value)
-                    input_temp = self.threshold_polydata(input_polydata, value)
-                    dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
-                                                                                          input_temp,
-                                                                                          paired=self.paired)
-                    input_features["{}_{}_dta_{}".format(reference_key, pre_process_key, value)] = dta_metric
-                    input_features["{}_{}_hd_{}".format(reference_key, pre_process_key, value)] = hd_metric
-                    input_features["{}_{}_hd95th_{}".format(reference_key, pre_process_key, value)] = hd_95th_metric
-            else:
-                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
-                                                                                      input_features[pre_process_key],
-                                                                                      paired=self.paired)
-                input_features["{}_{}_dta".format(reference_key, pre_process_key)] = dta_metric
-                input_features["{}_{}_hd".format(reference_key, pre_process_key)] = hd_metric
-                input_features["{}_{}_hd95th".format(reference_key, pre_process_key)] = hd_95th_metric
+            self.compute_metric(reference_key, pre_process_key, input_features)
         return input_features
 
     def post_process(self, input_features):
         _check_keys_(input_features, self.reference_keys + self.post_process_keys)
         for reference_key, post_process_key in zip(self.reference_keys, self.post_process_keys):
-            if self.use_scalars:
-                refence_polydata = input_features[reference_key]
-                refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
-                scalar_range = refence_polydata.GetScalarRange()
-                input_polydata = input_features[post_process_key]
-                for value in range(int(max(scalar_range))+1):
-                    reference_temp = self.threshold_polydata(refence_polydata, value)
-                    input_temp = self.threshold_polydata(input_polydata, value)
-                    dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
-                                                                                          input_temp,
-                                                                                          paired=self.paired)
-                    input_features["{}_{}_dta_{}".format(reference_key, post_process_key, value)] = dta_metric
-                    input_features["{}_{}_hd_{}".format(reference_key, post_process_key, value)] = hd_metric
-                    input_features["{}_{}_hd95th_{}".format(reference_key, post_process_key, value)] = hd_95th_metric
-            else:
-                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
-                                                                                      input_features[post_process_key],
-                                                                                      paired=self.paired)
-                input_features["{}_{}_dta".format(reference_key, post_process_key)] = dta_metric
-                input_features["{}_{}_hd".format(reference_key, post_process_key)] = hd_metric
-                input_features["{}_{}_hd95th".format(reference_key, post_process_key)] = hd_95th_metric
+            self.compute_metric(reference_key, post_process_key, input_features)
+        return input_features
+
+class VolumeBasedMetrics(Processor):
+    def __init__(self, reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
+                 post_process_keys=('bt_poly', 'ft_poly',), use_scalars=False, scalar_name='label_scalar'):
+        '''
+        :param reference_keys:
+        :param pre_process_keys: compute dice before deformation to evaluate rigid alignement (for ex)
+        :param post_process_keys: compute dice after deformation to evaluate rigid alignement (for ex)
+        '''
+        self.reference_keys = reference_keys
+        self.pre_process_keys = pre_process_keys
+        self.post_process_keys = post_process_keys
+        self.use_scalars = use_scalars
+        self.scalar_name = scalar_name
+
+    def compute_metric(self, ref_key, input_key, input_features):
+        if self.use_scalars:
+            refence_polydata = input_features[ref_key]
+            refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
+            scalar_range = refence_polydata.GetScalarRange()
+            input_polydata = input_features[input_key]
+            for value in range(int(max(scalar_range)) + 1):
+                reference_temp = threshold_selection_polydata(refence_polydata, value)
+                ref_converter = DataConverter(polydata=reference_temp)
+                ref_mask = ref_converter.polydata_to_mask()
+                input_temp = threshold_selection_polydata(input_polydata, value)
+                input_converter = DataConverter(polydata=input_temp)
+                input_mask = input_converter.polydata_to_mask()
+
+                input_features["{}_{}_dsc_{}".format(ref_key, input_key, value)] = 0.0
+        else:
+            input_features["{}_{}_dsc".format(ref_key, input_key)] = 0.0
+        return input_features
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.reference_keys + self.pre_process_keys)
+        for reference_key, pre_process_key in zip(self.reference_keys, self.pre_process_keys):
+            self.compute_metric(reference_key, pre_process_key, input_features)
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features, self.reference_keys + self.post_process_keys)
+        for reference_key, post_process_key in zip(self.reference_keys, self.post_process_keys):
+            self.compute_metric(reference_key, post_process_key, input_features)
         return input_features
 
 
