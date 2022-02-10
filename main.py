@@ -88,10 +88,13 @@ def compute_multi_organs():
                        output_keys=('fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum',
                                     'mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'),
                        nb_points=(750, 500, 750, 750, 500, 750,)),
+        ComputePolydataICP(fixed_key='fpoly_prostate', moving_key='mpoly_prostate', type='centroid',
+                           matrix_key='transform_matrix'),
         JoinPoly(input_key_list=['fpoly_bladder', 'fpoly_prostate', 'fpoly_rectum'], output_key='xpoly',
                  use_scalar=True),
         JoinPoly(input_key_list=['mpoly_bladder', 'mpoly_prostate', 'mpoly_rectum'], output_key='ypoly',
                  use_scalar=True),
+        ApplyPolydataTransform(moving_keys=('ypoly',), matrix_keys=('transform_matrix',), output_keys=('ypoly',)),
         CreateDVF(reference_keys=('xpoly', 'ypoly',), deformed_keys=('ft_poly', 'bt_poly',),
                   output_keys=('ft_dvf', 'bt_dvf',), run_post_process=True),
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
@@ -109,7 +112,7 @@ def compute_multi_organs():
                 output_keys=('bt_poly_centroid', 'ft_poly_centroid', 'bt_poly_scale', 'ft_poly_scale'))
     ])
     deformable_model.set_cost_functions(
-        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=False, passband=[0.01, 0.1, 1])
+        STPSRPM(xpoly_key='xpoly', ypoly_key='ypoly', use_scalar_vtk=True, scalars_name='label_scalar', passband=[0.01, 0.1, 1])
     )
 
     # build model
@@ -191,5 +194,5 @@ def compute_tubular():
 
 # TODO finite element model using unstructured structure
 if __name__ == '__main__':
-    # compute_multi_organs()
-    compute_tubular()
+    compute_multi_organs()
+    # compute_tubular()

@@ -890,3 +890,64 @@ class CenterlineProjection(Processor):
             output.GetPointData().SetScalars(vtk_scalar)
             input_features[output_key] = output
         return input_features
+
+class ComputePolydataICP(Processor):
+    def __init__(self, fixed_key='fpoly_prostate', moving_key='fpoly_prostate', type='centroid',
+                 matrix_key='transform_matrix'):
+        """
+        :param fixed_key:
+        :param moving_key:
+        :param type: centroid does not include rotation, icp does
+        :param matrix_key: vtkMatrix4x4 to be used by a vtk.vtkTransform() filter
+        """
+        self.fixed_key = fixed_key
+        self.moving_key = moving_key
+        self.matrix_key = matrix_key
+        if type == 'centroid':
+            self.iteration = 0
+        elif type == 'icp':
+            self.iteration = 50
+        else:
+            raise ValueError("Type not in [centroid, icp]")
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, (self.fixed_key, self.moving_key))
+        icp_filter = vtk.vtkIterativeClosestPointTransform()
+        icp_filter.SetSource(input_features[self.moving_key])
+        icp_filter.SetTarget(input_features[self.fixed_key])
+        icp_filter.GetLandmarkTransform().SetModeToRigidBody()
+        icp_filter.SetMaximumNumberOfIterations(self.iteration)
+        icp_filter.StartByMatchingCentroidsOn()
+        icp_filter.Modified()
+        icp_filter.Update()
+        input_features[self.matrix_key] = icp_filter.GetMatrix()
+        return input_features
+
+class ApplyPolydataTransform(Processor):
+    def __init__(self, moving_keys=('',), matrix_keys=('',), output_keys=('',)):
+        """
+        :param moving_keys:
+        :param matrix_keys: vtkMatrix4x4 to be used by a vtk.vtkTransform() filter
+        :param output_keys:
+        """
+        self.moving_keys = moving_keys
+        self.matrix_keys = matrix_keys
+        self.output_keys = output_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.moving_keys+self.matrix_keys)
+        for moving_key, matrix_key, output_key in zip(self.moving_keys, self.matrix_keys, self.output_keys):
+            polydata = input_features[moving_key]
+            transform = vtk.vtkTransform()
+            transform.SetMatrix(input_features[matrix_key])
+            transform_filter = vtk.vtkTransformPolyDataFilter()
+            transform_filter.SetInputData(polydata)
+            transform_filter.SetTransform(transform)
+            transform_filter.SetOutputPointsPrecision(2)
+            transform_filter.Update()
+            input_features[output_key] = transform_filter.GetOutput()
+        return input_features
+
+
+
+
