@@ -370,7 +370,7 @@ class JoinPoly(Processor):
 
 class DistanceBasedMetrics(Processor):
     def __init__(self, reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
-                 post_process_keys=('bt_poly', 'ft_poly',), paired=False):
+                 post_process_keys=('bt_poly', 'ft_poly',), paired=False, use_scalars=False, scalar_name='label_scalar'):
         '''
         :param reference_keys:
         :param pre_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
@@ -381,6 +381,8 @@ class DistanceBasedMetrics(Processor):
         self.pre_process_keys = pre_process_keys
         self.post_process_keys = post_process_keys
         self.paired = paired
+        self.use_scalars = use_scalars
+        self.scalar_name = scalar_name
 
     def compute_distance_metrics(self, reference, moving, paired=False):
         reference = numpy_support.vtk_to_numpy(reference.GetPoints().GetData())
@@ -408,26 +410,68 @@ class DistanceBasedMetrics(Processor):
             hd_95th_metric = (distances1[int(0.95 * len(distances1))] + distances2[int(0.95 * len(distances2))]) / 2
         return dta_metric, hd_metric, hd_95th_metric
 
+    def threshold_polydata(self, polydata, lower_th, upper_th=None):
+        output = vtk.vtkPolyData()
+        threshold_filter = vtk.vtkThresholdPoints()
+        threshold_filter.SetInputData(polydata)
+        if upper_th:
+            threshold_filter.ThresholdBetween(lower_th, upper_th)
+        else:
+            threshold_filter.ThresholdBetween(lower_th, lower_th+0.5)
+        threshold_filter.Update()
+        output.DeepCopy(threshold_filter.GetOutput())
+        return output
+
     def pre_process(self, input_features):
         _check_keys_(input_features, self.reference_keys + self.pre_process_keys)
         for reference_key, pre_process_key in zip(self.reference_keys, self.pre_process_keys):
-            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
-                                                                                  input_features[pre_process_key],
-                                                                                  paired=self.paired)
-            input_features["{}_{}_dta".format(reference_key, pre_process_key)] = dta_metric
-            input_features["{}_{}_hd".format(reference_key, pre_process_key)] = hd_metric
-            input_features["{}_{}_hd95th".format(reference_key, pre_process_key)] = hd_95th_metric
+            if self.use_scalars:
+                refence_polydata = input_features[reference_key]
+                refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
+                scalar_range = refence_polydata.GetScalarRange()
+                input_polydata = input_features[pre_process_key]
+                for value in range(int(max(scalar_range))+1):
+                    reference_temp = self.threshold_polydata(refence_polydata, value)
+                    input_temp = self.threshold_polydata(input_polydata, value)
+                    dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
+                                                                                          input_temp,
+                                                                                          paired=self.paired)
+                    input_features["{}_{}_dta_{}".format(reference_key, pre_process_key, value)] = dta_metric
+                    input_features["{}_{}_hd_{}".format(reference_key, pre_process_key, value)] = hd_metric
+                    input_features["{}_{}_hd95th_{}".format(reference_key, pre_process_key, value)] = hd_95th_metric
+            else:
+                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
+                                                                                      input_features[pre_process_key],
+                                                                                      paired=self.paired)
+                input_features["{}_{}_dta".format(reference_key, pre_process_key)] = dta_metric
+                input_features["{}_{}_hd".format(reference_key, pre_process_key)] = hd_metric
+                input_features["{}_{}_hd95th".format(reference_key, pre_process_key)] = hd_95th_metric
         return input_features
 
     def post_process(self, input_features):
         _check_keys_(input_features, self.reference_keys + self.post_process_keys)
         for reference_key, post_process_key in zip(self.reference_keys, self.post_process_keys):
-            dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
-                                                                                  input_features[post_process_key],
-                                                                                  paired=self.paired)
-            input_features["{}_{}_dta".format(reference_key, post_process_key)] = dta_metric
-            input_features["{}_{}_hd".format(reference_key, post_process_key)] = hd_metric
-            input_features["{}_{}_hd95th".format(reference_key, post_process_key)] = hd_95th_metric
+            if self.use_scalars:
+                refence_polydata = input_features[reference_key]
+                refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
+                scalar_range = refence_polydata.GetScalarRange()
+                input_polydata = input_features[post_process_key]
+                for value in range(int(max(scalar_range))+1):
+                    reference_temp = self.threshold_polydata(refence_polydata, value)
+                    input_temp = self.threshold_polydata(input_polydata, value)
+                    dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(reference_temp,
+                                                                                          input_temp,
+                                                                                          paired=self.paired)
+                    input_features["{}_{}_dta_{}".format(reference_key, post_process_key, value)] = dta_metric
+                    input_features["{}_{}_hd_{}".format(reference_key, post_process_key, value)] = hd_metric
+                    input_features["{}_{}_hd95th_{}".format(reference_key, post_process_key, value)] = hd_95th_metric
+            else:
+                dta_metric, hd_metric, hd_95th_metric = self.compute_distance_metrics(input_features[reference_key],
+                                                                                      input_features[post_process_key],
+                                                                                      paired=self.paired)
+                input_features["{}_{}_dta".format(reference_key, post_process_key)] = dta_metric
+                input_features["{}_{}_hd".format(reference_key, post_process_key)] = hd_metric
+                input_features["{}_{}_hd95th".format(reference_key, post_process_key)] = hd_95th_metric
         return input_features
 
 
