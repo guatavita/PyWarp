@@ -124,6 +124,8 @@ def threshold_polydata(polydata, lower_th, upper_th=None, return_selection=False
     return output
 
 def threshold_selection_polydata(polydata, value_condition=0):
+    output = vtk.vtkPolyData()
+
     np_scalars = numpy_support.vtk_to_numpy(polydata.GetPointData().GetScalars())
     np_indices = np.flatnonzero(np_scalars == value_condition)
     extract_selection_filter = vtk.vtkExtractSelection()
@@ -131,7 +133,7 @@ def threshold_selection_polydata(polydata, value_condition=0):
     vtk_ids = vtk.vtkIdTypeArray()
     vtk_ids.SetNumberOfComponents(1)
     for i in range(len(np_indices)):
-        vtk_ids.InsertNextValue(i)
+        vtk_ids.InsertNextValue(np_indices[i])
 
     selection_node = vtk.vtkSelectionNode()
     selection_node.SetFieldType(vtk.vtkSelectionNode.POINT)
@@ -149,8 +151,9 @@ def threshold_selection_polydata(polydata, value_condition=0):
     geometry_filter = vtk.vtkGeometryFilter()
     geometry_filter.SetInputConnection(extract_selection_filter.GetOutputPort())
     geometry_filter.Update()
+    output.DeepCopy(geometry_filter.GetOutput())
 
-    return geometry_filter.GetOutput()
+    return output
 
 class Processor(object):
     def pre_process(self, input_features):
@@ -505,7 +508,7 @@ class VolumeBasedMetrics(Processor):
         if self.use_scalars:
             refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
             scalar_range = refence_polydata.GetScalarRange()
-            for value in range(int(max(scalar_range)) + 1):
+            for value in range(int(max(scalar_range))+1):
                 reference_temp = threshold_selection_polydata(refence_polydata, value)
                 ref_converter = DataConverter(polydata=reference_temp, cast_float32=False)
                 ref_mask = ref_converter.polydata_to_mask()
