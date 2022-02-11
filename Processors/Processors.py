@@ -454,7 +454,7 @@ class DistanceBasedMetrics(Processor):
             M = reference.shape[0]
             N = moving.shape[0]
             D = reference.shape[-1]
-            kernel = np.zeros((M, N))
+            kernel = np.zeros((N, M))
             for i in range(D):
                 temp1 = np.tile(reference[:, i], (N, 1))
                 temp2 = np.transpose(np.tile(moving[:, i], (M, 1)))
