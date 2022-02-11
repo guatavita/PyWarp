@@ -84,7 +84,8 @@ class PolydataReaderWriter(DataReaderWriter):
         return self.reader.GetOutput()
 
     def export_data(self):
-        self.writer.Write()
+        if self.polydata:
+            self.writer.Write()
 
 
 class DataConverter(object):
