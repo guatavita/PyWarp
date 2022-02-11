@@ -6,6 +6,7 @@
 # bastien.rigaud@univ-rennes1.fr
 # Description:
 
+import sys, os
 import itertools
 import math
 import numpy as np
@@ -26,10 +27,12 @@ from queue import *
 import collections
 import networkx as nx
 
-from IOTools.IOTools import DataConverter, PolydataReaderWriter
-from PlotVTK.PlotVTK import plot_vtk
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 from .Laplacian.Laplacian import Laplacian
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from IOTools.IOTools import DataConverter, PolydataReaderWriter
+from PlotVTK.PlotVTK import plot_vtk
 
 
 def _check_keys_(input_features, keys):
@@ -111,6 +114,7 @@ def translate_polydata(polydata, translation=(0., 0., 0.)):
     transform_filter.Update()
     return transform_filter.GetOutput()
 
+
 def threshold_polydata(polydata, lower_th, upper_th=None, return_selection=False):
     output = vtk.vtkPolyData()
     threshold_filter = vtk.vtkThresholdPoints()
@@ -118,10 +122,11 @@ def threshold_polydata(polydata, lower_th, upper_th=None, return_selection=False
     if upper_th:
         threshold_filter.ThresholdBetween(lower_th, upper_th)
     else:
-        threshold_filter.ThresholdBetween(lower_th, lower_th+0.5)
+        threshold_filter.ThresholdBetween(lower_th, lower_th + 0.5)
     threshold_filter.Update()
     output.DeepCopy(threshold_filter.GetOutput())
     return output
+
 
 def threshold_selection_polydata(polydata, value_condition=0):
     output = vtk.vtkPolyData()
@@ -154,6 +159,7 @@ def threshold_selection_polydata(polydata, value_condition=0):
     output.DeepCopy(geometry_filter.GetOutput())
 
     return output
+
 
 class Processor(object):
     def pre_process(self, input_features):
@@ -413,7 +419,8 @@ class JoinPoly(Processor):
 
 class DistanceBasedMetrics(Processor):
     def __init__(self, reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
-                 post_process_keys=('bt_poly', 'ft_poly',), paired=False, use_scalars=False, scalar_name='label_scalar'):
+                 post_process_keys=('bt_poly', 'ft_poly',), paired=False, use_scalars=False,
+                 scalar_name='label_scalar'):
         '''
         :param reference_keys:
         :param pre_process_keys: compute distance before deformation to evaluate rigid alignement (for ex)
@@ -488,6 +495,7 @@ class DistanceBasedMetrics(Processor):
             self.compute_metric(reference_key, post_process_key, input_features)
         return input_features
 
+
 class VolumeBasedMetrics(Processor):
     def __init__(self, reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
                  post_process_keys=('bt_poly', 'ft_poly',), use_scalars=False, scalar_name='label_scalar'):
@@ -508,19 +516,22 @@ class VolumeBasedMetrics(Processor):
         if self.use_scalars:
             refence_polydata.GetPointData().SetActiveScalars(self.scalar_name)
             scalar_range = refence_polydata.GetScalarRange()
-            for value in range(int(max(scalar_range))+1):
+            for value in range(int(max(scalar_range)) + 1):
                 reference_temp = threshold_selection_polydata(refence_polydata, value)
                 ref_converter = DataConverter(polydata=reference_temp, cast_float32=False)
                 ref_mask = ref_converter.polydata_to_mask()
                 input_temp = threshold_selection_polydata(input_polydata, value)
                 input_converter = DataConverter(polydata=input_temp, cast_float32=False)
                 input_mask = input_converter.polydata_to_mask()
-                input_mask = sitk.Resample(input_mask, ref_mask, interpolator=sitk.sitkNearestNeighbor, defaultPixelValue=0)
+                input_mask = sitk.Resample(input_mask, ref_mask, interpolator=sitk.sitkNearestNeighbor,
+                                           defaultPixelValue=0)
                 overlap_filter = sitk.LabelOverlapMeasuresImageFilter()
                 overlap_filter.Execute(ref_mask, input_mask)
                 input_features["{}_{}_dsc_{}".format(ref_key, input_key, value)] = overlap_filter.GetDiceCoefficient()
-                input_features["{}_{}_jacc_{}".format(ref_key, input_key, value)] = overlap_filter.GetJaccardCoefficient()
-                input_features["{}_{}_overlap_{}".format(ref_key, input_key, value)] = overlap_filter.GetVolumeSimilarity()
+                input_features[
+                    "{}_{}_jacc_{}".format(ref_key, input_key, value)] = overlap_filter.GetJaccardCoefficient()
+                input_features[
+                    "{}_{}_overlap_{}".format(ref_key, input_key, value)] = overlap_filter.GetVolumeSimilarity()
         else:
             ref_converter = DataConverter(polydata=refence_polydata, cast_float32=False)
             ref_mask = ref_converter.polydata_to_mask()
@@ -1007,6 +1018,7 @@ class CenterlineProjection(Processor):
             input_features[output_key] = output
         return input_features
 
+
 class ComputePolydataICP(Processor):
     def __init__(self, fixed_key='fpoly_prostate', moving_key='fpoly_prostate', type='centroid',
                  matrix_key='transform_matrix'):
@@ -1039,6 +1051,7 @@ class ComputePolydataICP(Processor):
         input_features[self.matrix_key] = icp_filter.GetMatrix()
         return input_features
 
+
 class ApplyPolydataTransform(Processor):
     def __init__(self, moving_keys=('',), matrix_keys=('',), output_keys=('',)):
         """
@@ -1051,7 +1064,7 @@ class ApplyPolydataTransform(Processor):
         self.output_keys = output_keys
 
     def pre_process(self, input_features):
-        _check_keys_(input_features, self.moving_keys+self.matrix_keys)
+        _check_keys_(input_features, self.moving_keys + self.matrix_keys)
         for moving_key, matrix_key, output_key in zip(self.moving_keys, self.matrix_keys, self.output_keys):
             polydata = input_features[moving_key]
             transform = vtk.vtkTransform()
@@ -1063,7 +1076,3 @@ class ApplyPolydataTransform(Processor):
             transform_filter.Update()
             input_features[output_key] = transform_filter.GetOutput()
         return input_features
-
-
-
-

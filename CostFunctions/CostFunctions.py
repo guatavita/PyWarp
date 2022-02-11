@@ -6,12 +6,14 @@
 # bastien.rigaud@univ-rennes1.fr
 # Description:
 
+import sys, os
 import numpy as np
 import vtk
 from vtk.util import numpy_support
 import arrayfire as af
 import math
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from PlotVTK.PlotVTK import plot_vtk
 
 backends = af.get_available_backends()
