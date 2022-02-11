@@ -100,7 +100,7 @@ def compute_multi_organs():
         DistanceBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
                              post_process_keys=('bt_poly', 'ft_poly',), paired=False, use_scalars=True,
                              scalar_name='label_scalar'),
-        VolumeBasedMetrics(reference_keys=('xpoly', 'ypoly',), pre_process_keys=('ypoly', 'xpoly',),
+        VolumeBasedMetrics(reference_keys=('xpoly', 'ypoly'), pre_process_keys=('ypoly',),
                              post_process_keys=('bt_poly', 'ft_poly',), use_scalars=True, scalar_name='label_scalar'),
         GetZNormParameters(input_keys=('xpoly', 'ypoly'), centroid_keys=('xpoly_centroid', 'ypoly_centroid'),
                            scale_keys=('xpoly_scale', 'ypoly_scale')),
@@ -197,6 +197,7 @@ def compute_tubular():
 
 # TODO finite element model using unstructured structure
 # TODO define a list of scalars for the sTPSRPM
+# TODO add curvature as scalars (for superior part of the rectum?)
 if __name__ == '__main__':
     compute_multi_organs()
     # compute_tubular()
