@@ -27,9 +27,10 @@ class BuildModel(object):
     def load_data(self, input_features):
         list_path = list(input_features.keys())
         for key in list_path:
-            filepath = input_features.get(key)
-            temp_loader = self.dataloader(filepath=filepath)
-            input_features[key.replace('_path', '')] = temp_loader.import_data()
+            if 'path' in key:
+                filepath = input_features.get(key)
+                temp_loader = self.dataloader(filepath=filepath)
+                input_features[key.replace('_path', '')] = temp_loader.import_data()
 
     def pre_process(self, input_features):
         for processor in self.processors:
