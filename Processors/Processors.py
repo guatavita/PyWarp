@@ -1057,6 +1057,11 @@ class ComputePolydataICP(Processor):
         icp_filter.Modified()
         icp_filter.Update()
         input_features[self.matrix_key] = icp_filter.GetMatrix()
+        # icp_transform_filter = vtk.vtkTransformPolyDataFilter()
+        # icp_transform_filter.SetInputData(input_features[self.moving_key])
+        # icp_transform_filter.SetTransform(icp_filter);
+        # icp_transform_filter.Update()
+        # test = icp_transform_filter.GetOutput()
         return input_features
 
 
