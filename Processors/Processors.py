@@ -213,7 +213,6 @@ class ConvertMaskToPoly(Processor):
                 input_features[output_key] = fill_holes_filter.GetOutput()
             else:
                 input_features[output_key] = converter.mask_to_polydata()
-
         return input_features
 
 

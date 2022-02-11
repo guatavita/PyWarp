@@ -191,6 +191,7 @@ def compute_tubular():
     # build model
     deformable_model.load_data(input_features)
     deformable_model.pre_process(input_features)
+    plot_vtk(input_features['xpoly'], input_features['ypoly'])
     deformable_model.run_cost_function(input_features)
     deformable_model.post_process(input_features)
     plot_vtk(input_features['ft_dvf'], input_features['ypoly'])
