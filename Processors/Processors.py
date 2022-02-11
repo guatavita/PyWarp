@@ -194,17 +194,26 @@ class ACVDResampling(Processor):
 
 
 class ConvertMaskToPoly(Processor):
-    def __init__(self, input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly')):
+    def __init__(self, input_keys=('xmask', 'ymask'), output_keys=('xpoly', 'ypoly'), fill_holes=True):
         self.input_keys = input_keys
         self.output_keys = output_keys
         self.converter = DataConverter()
+        self.fill_holes = fill_holes
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.input_keys)
         for input_key, output_key in zip(self.input_keys, self.output_keys):
             image = input_features[input_key]
             converter = DataConverter(image=image, inval=1, outval=0, cast_float32=True)
-            input_features[output_key] = converter.mask_to_polydata()
+            if self.fill_holes:
+                fill_holes_filter = vtk.vtkFillHolesFilter()
+                fill_holes_filter.SetInputData(converter.mask_to_polydata())
+                fill_holes_filter.SetHoleSize(999999.9)
+                fill_holes_filter.Update()
+                input_features[output_key] = fill_holes_filter.GetOutput()
+            else:
+                input_features[output_key] = converter.mask_to_polydata()
+
         return input_features
 
 

@@ -60,12 +60,12 @@ def compute_multi_organs():
     # define model
     deformable_model = BuildModel(dataloader=ImageReaderWriter)
     input_features = {
-        'fixed_bladder_path': r'C:\Data\Data_test\Vessie_ext_0.nii.gz',
-        'moving_bladder_path': r'C:\Data\Data_test\Vessie_ext_1.nii.gz',
-        'fixed_prostate_path': r'C:\Data\Data_test\Prostate_0.nii.gz',
-        'moving_prostate_path': r'C:\Data\Data_test\Prostate_1.nii.gz',
-        'fixed_rectum_path': r'C:\Data\Data_test\Rectum_ext_0.nii.gz',
-        'moving_rectum_path': r'C:\Data\Data_test\Rectum_ext_1.nii.gz',
+        'fixed_bladder_path': r'C:\Data\DELPEL\results\sorted_data\Template_Bladder.nii.gz',
+        'fixed_prostate_path': r'C:\Data\DELPEL\results\sorted_data\Template_Prostate.nii.gz',
+        'fixed_rectum_path': r'C:\Data\DELPEL\results\sorted_data\Template_Rectum.nii.gz',
+        'moving_bladder_path': r'C:\Data\DELPEL\results\sorted_data\ID0120_Bladder.nii.gz',
+        'moving_prostate_path': r'C:\Data\DELPEL\results\sorted_data\ID0120_Prostate.nii.gz',
+        'moving_rectum_path': r'C:\Data\DELPEL\results\sorted_data\ID0120_Rectum.nii.gz',
     }
     deformable_model.set_processors([
         GetSITKInfo(input_keys=('fixed_bladder', 'fixed_prostate', 'fixed_rectum',
