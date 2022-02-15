@@ -4,3 +4,6 @@
 [submodule "Processors/Laplacian"]
 	path = Processors/Laplacian
 	url = https://github.com/guatavita/Laplacian.git
+[submodule "IOTools"]
+	path = IOTools
+	url = https://github.com/guatavita/IOTools.git
