@@ -29,6 +29,8 @@ import networkx as nx
 
 from PlotScrollNumpyArrays.Plot_Scroll_Images import plot_scroll_Image
 from .Laplacian.Laplacian import Laplacian
+from Image_Processors_Utils.Image_Processor_Utils import compute_binary_morphology, compute_bounding_box, \
+    Remove_Smallest_Structures
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from IOTools.IOTools import DataConverter, PolydataReaderWriter
@@ -43,46 +45,6 @@ def _check_keys_(input_features, keys):
     else:
         assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
                                               '{} was not found'.format(keys)
-
-
-def compute_bounding_box(annotation, padding=2):
-    '''
-    :param annotation: A binary image of shape [# images, # rows, # cols, channels]
-    :return: the min and max z, row, and column numbers bounding the image
-    '''
-    shape = annotation.shape
-    indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
-    min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
-    # Get the row values of primary and secondary
-    indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
-    min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
-    # Get the col values of primary and secondary
-    indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
-    min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
-    return [min_slice, max_slice, min_row, max_row, min_col, max_col]
-
-
-def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
-    # this is faster than using sitk binary morphology filters (dilate, erode, opening, closing)
-    if len(input_img.shape) == 2:
-        struct = morphology.disk(radius)
-    elif len(input_img.shape) == 3:
-        struct = morphology.ball(radius)
-    else:
-        raise ValueError("Dim {} for morphology structure element not supported".format(len(input_img.shape)))
-
-    if morph_type == 'closing':
-        input_img = binary_closing(input_img, structure=struct)
-    elif morph_type == 'opening':
-        input_img = binary_opening(input_img, structure=struct)
-    elif morph_type == 'erosion':
-        input_img = binary_erosion(input_img, structure=struct)
-    elif morph_type == 'dilation':
-        input_img = binary_dilation(input_img, structure=struct)
-    else:
-        raise ValueError("Type {} is not supported".format(morph_type))
-
-    return input_img
 
 
 def get_polydata_scale(polydata, centroid):
@@ -1088,4 +1050,17 @@ class ApplyPolydataTransform(Processor):
             transform_filter.SetOutputPointsPrecision(2)
             transform_filter.Update()
             input_features[output_key] = transform_filter.GetOutput()
+        return input_features
+
+
+class RemoveUnconnectedComponents(Processor):
+    def __init__(self, input_keys=('',), output_keys=('',)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            component_filter = Remove_Smallest_Structures()
+            input_features[output_key] = component_filter.remove_smallest_component(input_features[input_key])
         return input_features
