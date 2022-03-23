@@ -5,8 +5,9 @@
 # 35042 Rennes, FRANCE
 # bastien.rigaud@univ-rennes1.fr
 # Description:
+import sys, os
 import time
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 from IOTools.IOTools import *
 from Processors.Processors import *
 from CostFunctions.CostFunctions import *
