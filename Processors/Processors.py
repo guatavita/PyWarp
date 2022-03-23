@@ -1064,3 +1064,63 @@ class RemoveUnconnectedComponents(Processor):
             component_filter = Remove_Smallest_Structures()
             input_features[output_key] = component_filter.remove_smallest_component(input_features[input_key])
         return input_features
+
+
+class ComputeDistanceGeodesic(Processor):
+    def __init__(self, input_keys=('',), output_keys=('',)):
+        self.input_keys = input_keys
+        self.output_keys = output_keys
+
+    def find_basis_point(self, polydata):
+        polydata_pts = numpy_support.vtk_to_numpy(polydata.GetPoints().GetData())
+        lastz = 99999
+        nb = 0
+        coord = [0] * 3
+        centroid = [0] * 3
+        # get last point
+        for i in range(len(polydata_pts)):
+            point = polydata_pts[i]
+            if point[2] < lastz:
+                lastz = point[2]
+        # get "floor" of last point
+        for i in range(len(polydata_pts)):
+            point = polydata_pts[i]
+            if math.floor(point[2]) == math.floor(lastz):
+                for j in range(3):
+                    coord[j] += point[j]
+                nb += 1
+        for j in range(3):
+            centroid[j] = coord[j] / nb
+        # tree locator
+        treelocator = vtk.vtkKdTreePointLocator()
+        treelocator.SetDataSet(polydata)
+        treelocator.BuildLocator()
+        plist = vtk.vtkIdList()
+        treelocator.FindClosestNPoints(1, centroid, plist)
+        return plist.GetId(0)
+
+    def compute_geodesic_distance(self, polydata, source_point_id, norm=True, norm_factor=1.0):
+        output_scalars = vtk.vtkDoubleArray()
+        dijkstra = vtk.vtkDijkstraGraphGeodesicPath()
+        dijkstra.SetInputData(polydata)
+        dijkstra.SetStartVertex(source_point_id)
+        dijkstra.Update()
+        dijkstra.GetCumulativeWeights(output_scalars)
+        if norm:
+            scalars_np = numpy_support.vtk_to_numpy(output_scalars)
+            max = np.max(scalars_np)
+            scalars_np = norm_factor * scalars_np / max
+            output_scalars = numpy_support.numpy_to_vtk(scalars_np)
+        output_scalars.SetName('Geodesic')
+        output_poly = vtk.vtkPolyData()
+        output_poly.DeepCopy(polydata)
+        output_poly.GetPointData().SetScalars(output_scalars)
+        return output_poly
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.input_keys)
+        for input_key, output_key in zip(self.input_keys, self.output_keys):
+            input_poly = input_features[input_key]
+            basis_point_id = self.find_basis_point(input_poly)
+            input_features[output_key] = self.compute_geodesic_distance(input_poly, basis_point_id)
+        return input_features
