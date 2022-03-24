@@ -484,15 +484,6 @@ class STPSRPM(CostFunction):
                         self.m_outliers_row[0:self.lm_size] = 0
                         self.m_outliers_col[0:self.lm_size] = 0
 
-                    # check if nan or + / -inf in the m_matrix (bad mapping)
-                    if af.sum(af.isnan(self.m_matrix) + af.isinf(self.m_matrix)) > 1:
-                        print("---------------------------------------------")
-                        print("    EXIT_FAILURE")
-                        print("    NaN or -/+inf were found in the m_matrix")
-                        print("    Program has been interrupted")
-                        print("---------------------------------------------")
-                        return virtual_xpoly, virtual_ypoly
-
                     if self.iterative_norm:
                         self.normalize_it_m()
                     else:
@@ -501,8 +492,21 @@ class STPSRPM(CostFunction):
                     if self.threshold:
                         self.threshold_m(self.threshold)
 
-                    virtual_ypoly = self.update_virtual(ypoly_res, self.m_matrix)
-                    virtual_xpoly = self.update_virtual(xpoly_res, af.transpose(self.m_matrix))
+                    virtual_ypoly_temp = self.update_virtual(ypoly_res, self.m_matrix)
+                    virtual_xpoly_temp = self.update_virtual(xpoly_res, af.transpose(self.m_matrix))
+
+                    # check if nan or + / -inf in the deformed mesh (bad mapping)
+                    if af.sum(af.isnan(virtual_xpoly_temp) + af.isinf(virtual_xpoly_temp) + af.isnan(
+                            virtual_ypoly_temp) + af.isinf(virtual_ypoly_temp)) > 1:
+                        print("---------------------------------------------")
+                        print("    EXIT_FAILURE")
+                        print("    NaN or -/+inf were found in the projected meshes")
+                        print("    Program has been interrupted, previous step returned")
+                        print("---------------------------------------------")
+                        return virtual_xpoly, virtual_ypoly
+
+                    virtual_xpoly = virtual_xpoly_temp
+                    virtual_ypoly = virtual_ypoly_temp
 
                     self.K_ft, self.d_ft, self.c_ft = self.computeTPS_QR(xpoly_res, virtual_ypoly, lambda1, lambda2)
                     self.K_bt, self.d_bt, self.c_bt = self.computeTPS_QR(ypoly_res, virtual_xpoly, lambda1, lambda2)
